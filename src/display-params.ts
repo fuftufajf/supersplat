@@ -4,7 +4,7 @@ import type { Splat } from './splat';
  * Splat Director — frozen contract for animatable display parameters.
  *
  * This registry is the single shared interface between:
- *   - the display-animation engine (DisplayParamTrack, registered in display-tracks.ts), and
+ *   - the display-animation engine (DisplayParamTrack, registered in display-track.ts), and
  *   - the Director panel UI (ui/director-panel.ts).
  *
  * Both sides depend ONLY on this file so they can be developed in parallel without
