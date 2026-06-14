@@ -6,6 +6,7 @@ import { Events } from '../events';
 import { AboutPopup } from './about-popup';
 import { BottomToolbar } from './bottom-toolbar';
 import { ColorPanel } from './color-panel';
+import { DirectorPanel } from './director-panel';
 import { ExportPopup } from './export-popup';
 import { ImageSettingsDialog } from './image-settings-dialog';
 import { localize, localizeInit } from './localization';
@@ -153,19 +154,29 @@ class EditorUI {
         });
 
         const timelinePanel = new TimelinePanel(events, tooltips);
+        const directorPanel = new DirectorPanel(events, tooltips);
         const dataPanel = new DataPanel(events);
         const statusBar = new StatusBar(events, tooltips);
 
-        timelinePanel.hidden = true;
+        const timelineWorkspace = new Container({
+            id: 'timeline-workspace',
+            hidden: true,
+            flex: true,
+            flexDirection: 'column'
+        });
+        timelineWorkspace.dom.style.gap = '0';
+
+        timelineWorkspace.append(directorPanel);
+        timelineWorkspace.append(timelinePanel);
 
         mainContainer.append(canvasContainer);
-        mainContainer.append(timelinePanel);
+        mainContainer.append(timelineWorkspace);
         mainContainer.append(dataPanel);
         mainContainer.append(statusBar);
 
         // Wire up status bar panel toggles
         events.on('statusBar.panelChanged', (panel: string | null) => {
-            timelinePanel.hidden = panel !== 'timeline';
+            timelineWorkspace.hidden = panel !== 'timeline';
             dataPanel.hidden = panel !== 'splatData';
         });
 
