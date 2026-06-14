@@ -2,6 +2,7 @@ import { WebPCodec } from '@playcanvas/splat-transform';
 import { Color, createGraphicsDevice } from 'playcanvas';
 
 import { registerCameraPosesEvents } from './camera-poses';
+import { registerDisplayTrackEvents } from './display-track';
 import { registerDocEvents } from './doc';
 import { EditHistory } from './edit-history';
 import { registerEditorEvents } from './editor';
@@ -95,6 +96,7 @@ const main = async () => {
 
     // register events that only need the events object (before UI is created)
     registerTimelineEvents(events);
+    registerDisplayTrackEvents(events);
     registerCameraPosesEvents(events);
     registerTrackManagerEvents(events);
     registerTransformHandlerEvents(events);
