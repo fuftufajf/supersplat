@@ -67,6 +67,7 @@ class Splat extends Element {
     _blackPoint = 0;
     _whitePoint = 1;
     _transparency = 1;
+    _pulse = 0;
     _revealProgress = 1;
 
     measurePoints: Vec3[] = [];
@@ -315,11 +316,14 @@ class Splat extends Element {
     }
 
     serialize(serializer: Serializer) {
+        const events = this.scene.events;
+        const frame = events.invoke('timeline.frame') ?? 0;
+        const fps = events.invoke('timeline.frameRate') ?? 30;
         serializer.packa(this.entity.getWorldTransform().data);
         serializer.pack(this.changedCounter);
         serializer.pack(this.visible);
         serializer.pack(this.tintClr.r, this.tintClr.g, this.tintClr.b);
-        serializer.pack(this.temperature, this.saturation, this.brightness, this.blackPoint, this.whitePoint, this.transparency, this.revealProgress);
+        serializer.pack(this.temperature, this.saturation, this.brightness, this.blackPoint, this.whitePoint, this.transparency, this.pulse, this.revealProgress, this.calcPulseFactor(frame, fps));
     }
 
     onPreRender() {
@@ -327,6 +331,9 @@ class Splat extends Element {
         const selected = this.scene.camera.renderOverlays && events.invoke('selection') === this;
         const cameraMode = events.invoke('camera.mode');
         const cameraOverlay = events.invoke('camera.overlay');
+        const frame = events.invoke('timeline.frame') ?? 0;
+        const fps = events.invoke('timeline.frameRate') ?? 30;
+        const pulseFactor = this.calcPulseFactor(frame, fps);
 
         // configure rings rendering
         const material = this.entity.gsplat.instance.material;
@@ -363,6 +370,7 @@ class Splat extends Element {
         ]);
 
         material.setParameter('saturation', this.saturation);
+        material.setParameter('pulseFactor', pulseFactor);
         material.setParameter('revealProgress', this.revealProgress);
         material.setParameter('revealBounds', [
             Number.isFinite(revealMin) ? revealMin : 0,
@@ -439,6 +447,13 @@ class Splat extends Element {
     // get world space bound
     get worldBound() {
         return this.worldBoundStorage;
+    }
+
+    private calcPulseFactor(frame: number, fps: number) {
+        const PULSE_HZ = 1.0;
+        const PULSE_DEPTH = 0.7;
+        const osc01 = 0.5 + 0.5 * Math.sin(2 * Math.PI * PULSE_HZ * (frame / fps));
+        return 1 - this.pulse * PULSE_DEPTH * osc01;
     }
 
     set visible(value: boolean) {
@@ -529,6 +544,17 @@ class Splat extends Element {
         return this._transparency;
     }
 
+    set pulse(value: number) {
+        if (value !== this._pulse) {
+            this._pulse = value;
+            this.scene.events.fire('splat.pulse', this);
+        }
+    }
+
+    get pulse() {
+        return this._pulse;
+    }
+
     set revealProgress(value: number) {
         if (value !== this._revealProgress) {
             this._revealProgress = value;
@@ -573,12 +599,13 @@ class Splat extends Element {
             blackPoint: this.blackPoint,
             whitePoint: this.whitePoint,
             transparency: this.transparency,
+            pulse: this.pulse,
             revealProgress: this.revealProgress
         };
     }
 
     docDeserialize(doc: any) {
-        const { name, position, rotation, scale, visible, tintClr, temperature, saturation, brightness, blackPoint, whitePoint, transparency, revealProgress } = doc;
+        const { name, position, rotation, scale, visible, tintClr, temperature, saturation, brightness, blackPoint, whitePoint, transparency, pulse, revealProgress } = doc;
 
         this.name = name;
         this.move(new Vec3(position), new Quat(rotation), new Vec3(scale));
@@ -590,6 +617,7 @@ class Splat extends Element {
         this.blackPoint = blackPoint;
         this.whitePoint = whitePoint;
         this.transparency = transparency;
+        this.pulse = pulse ?? 0;
         this.revealProgress = revealProgress ?? 1;
     }
 }

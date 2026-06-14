@@ -160,6 +160,7 @@ varying mediump vec4 color;
 
 uniform bool outlineMode;
 uniform float ringSize;
+uniform float pulseFactor;
 
 #if PICK_PASS
     uniform int pickMode;           // 0: id, 1: depth estimation
@@ -196,6 +197,7 @@ void main(void) {
     #else
         mediump float norm = normExp(A);
         mediump float alpha = norm * color.a;
+        alpha *= pulseFactor;
 
         if (texCoord_flags.w == 0.0 && ringSize > 0.0) {
             // rings mode

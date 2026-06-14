@@ -23,6 +23,7 @@ import type { Splat } from './splat';
  */
 
 type DisplayParamId =
+    | 'pulse'
     | 'revealProgress'
     | 'transparency'
     | 'saturation'
@@ -54,6 +55,18 @@ interface DisplayParam {
 // stock color panel agree. transparency is stored as a multiplier but edited in
 // log space (slider = ln(transparency)); all others are identity.
 const displayParams: DisplayParam[] = [
+    {
+        id: 'pulse',
+        label: 'Pulse',
+        min: 0,
+        max: 1,
+        step: 0.01,
+        default: 0,
+        get: splat => splat.pulse,
+        set: (splat, value) => {
+            splat.pulse = value;
+        }
+    },
     {
         id: 'revealProgress',
         label: 'Reveal',
