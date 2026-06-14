@@ -67,6 +67,7 @@ class Splat extends Element {
     _blackPoint = 0;
     _whitePoint = 1;
     _transparency = 1;
+    _revealProgress = 1;
 
     measurePoints: Vec3[] = [];
     measureSelection = -1;
@@ -318,7 +319,7 @@ class Splat extends Element {
         serializer.pack(this.changedCounter);
         serializer.pack(this.visible);
         serializer.pack(this.tintClr.r, this.tintClr.g, this.tintClr.b);
-        serializer.pack(this.temperature, this.saturation, this.brightness, this.blackPoint, this.whitePoint, this.transparency);
+        serializer.pack(this.temperature, this.saturation, this.brightness, this.blackPoint, this.whitePoint, this.transparency, this.revealProgress);
     }
 
     onPreRender() {
@@ -350,6 +351,8 @@ class Splat extends Element {
         // combine black pointer, white point and brightness
         const offset = -this.blackPoint + this.brightness;
         const scale = 1 / (this.whitePoint - this.blackPoint);
+        const revealMin = this.localBound.center.y - this.localBound.halfExtents.y;
+        const revealMax = this.localBound.center.y + this.localBound.halfExtents.y;
 
         material.setParameter('clrOffset', [offset, offset, offset]);
         material.setParameter('clrScale', [
@@ -360,6 +363,11 @@ class Splat extends Element {
         ]);
 
         material.setParameter('saturation', this.saturation);
+        material.setParameter('revealProgress', this.revealProgress);
+        material.setParameter('revealBounds', [
+            Number.isFinite(revealMin) ? revealMin : 0,
+            Number.isFinite(revealMax) ? revealMax : 1
+        ]);
         material.setParameter('transformPalette', this.transformPalette.texture);
 
         if (this.visible && selected) {
@@ -521,6 +529,17 @@ class Splat extends Element {
         return this._transparency;
     }
 
+    set revealProgress(value: number) {
+        if (value !== this._revealProgress) {
+            this._revealProgress = value;
+            this.scene.events.fire('splat.revealProgress', this);
+        }
+    }
+
+    get revealProgress() {
+        return this._revealProgress;
+    }
+
     // get pivot position/rotation/scale (caller should have awaited operation that changed data)
     getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform) {
         const { entity } = this;
@@ -553,12 +572,13 @@ class Splat extends Element {
             brightness: this.brightness,
             blackPoint: this.blackPoint,
             whitePoint: this.whitePoint,
-            transparency: this.transparency
+            transparency: this.transparency,
+            revealProgress: this.revealProgress
         };
     }
 
     docDeserialize(doc: any) {
-        const { name, position, rotation, scale, visible, tintClr, temperature, saturation, brightness, blackPoint, whitePoint, transparency } = doc;
+        const { name, position, rotation, scale, visible, tintClr, temperature, saturation, brightness, blackPoint, whitePoint, transparency, revealProgress } = doc;
 
         this.name = name;
         this.move(new Vec3(position), new Quat(rotation), new Vec3(scale));
@@ -570,6 +590,7 @@ class Splat extends Element {
         this.blackPoint = blackPoint;
         this.whitePoint = whitePoint;
         this.transparency = transparency;
+        this.revealProgress = revealProgress ?? 1;
     }
 }
 

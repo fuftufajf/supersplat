@@ -20,6 +20,8 @@ varying mediump vec4 color;
 mediump vec4 discardVec = vec4(0.0, 0.0, 2.0, 1.0);
 
 uniform float saturation;
+uniform float revealProgress;
+uniform vec2 revealBounds;
 
 vec3 applySaturation(vec3 color) {
     vec3 grey = vec3(dot(color, vec3(0.299, 0.587, 0.114)));
@@ -67,6 +69,12 @@ void main(void) {
 
     // get center
     vec3 modelCenter = getCenter();
+    vec3 revealCenter = (applyPaletteTransform(mat4(1.0)) * vec4(modelCenter, 1.0)).xyz;
+    float tAxis = (revealCenter.y - revealBounds.x) / max(1e-5, revealBounds.y - revealBounds.x);
+    if (tAxis > revealProgress) {
+        gl_Position = discardVec;
+        return;
+    }
 
     SplatCenter center;
     center.modelCenterOriginal = modelCenter;
