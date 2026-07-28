@@ -414,7 +414,7 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
     });
 
     events.function('scene.empty', () => {
-        return getSplats().length === 0;
+        return (scene.getElementsByType(ElementType.splat) as Splat[]).length === 0;
     });
 
     events.function('scene.import', async () => {

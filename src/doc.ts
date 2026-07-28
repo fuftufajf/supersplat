@@ -74,6 +74,10 @@ const registerDocEvents = (scene: Scene, events: Events) => {
         return true;
     };
 
+    const needsResetConfirmation = () => {
+        return Boolean(events.invoke('scene.dirty')) || !events.invoke('scene.empty');
+    };
+
     // reset the scene
     const resetScene = () => {
         events.fire('scene.clear');
@@ -124,6 +128,7 @@ const registerDocEvents = (scene: Scene, events: Events) => {
             events.invoke('docDeserialize.displayTracks', document.displayTracks);
             events.invoke('docDeserialize.poseSets', document.poseSets, document.camera?.fov);
             events.invoke('docDeserialize.view', document.view);
+            events.invoke('docDeserialize.director', document.director);
             scene.camera.docDeserialize(document.camera);
 
             // refresh the pivot to reflect the loaded transform
@@ -135,12 +140,14 @@ const registerDocEvents = (scene: Scene, events: Events) => {
                 currentSelection.getPivot(pivotOrigin, false, transform);
                 pivot.place(transform);
             }
+            return true;
         } catch (error) {
             await events.invoke('showPopup', {
                 type: 'error',
                 header: localize('doc.load-failed'),
                 message: `'${error.message ?? error}'`
             });
+            return false;
         } finally {
             // Clean up resources
             zipFs.close();
@@ -158,6 +165,7 @@ const registerDocEvents = (scene: Scene, events: Events) => {
                 version: 0,
                 camera: scene.camera.docSerialize(),
                 view: events.invoke('docSerialize.view'),
+                director: events.invoke('docSerialize.director'),
                 poseSets: events.invoke('docSerialize.poseSets'),
                 timeline: events.invoke('docSerialize.timeline'),
                 displayTracks: events.invoke('docSerialize.displayTracks'),
@@ -190,12 +198,14 @@ const registerDocEvents = (scene: Scene, events: Events) => {
 
             // Close zip (also closes underlying browser writer)
             await zipFs.close();
+            return true;
         } catch (error) {
             await events.invoke('showPopup', {
                 type: 'error',
                 header: localize('doc.save-failed'),
                 message: `'${error.message ?? error}'`
             });
+            return false;
         } finally {
             events.fire('stopSpinner');
         }
@@ -215,11 +225,13 @@ const registerDocEvents = (scene: Scene, events: Events) => {
     // (which would result in more seamless user experience), but this is not yet supported in
     // other browsers.
     events.function('doc.load', async (file: File, handle?: FileSystemFileHandle) => {
-        if (!events.invoke('scene.empty') && !await getResetConfirmation()) {
+        if (needsResetConfirmation() && !await getResetConfirmation()) {
             return false;
         }
 
-        await loadDocument(file);
+        if (!await loadDocument(file)) {
+            return false;
+        }
 
         events.fire('doc.setName', file.name);
 
@@ -227,17 +239,18 @@ const registerDocEvents = (scene: Scene, events: Events) => {
             documentFileHandle = handle;
             recentFiles.add(handle);
         }
+        return true;
     });
 
     events.function('doc.open', async () => {
-        if (!events.invoke('scene.empty') && !await getResetConfirmation()) {
+        if (needsResetConfirmation() && !await getResetConfirmation()) {
             return false;
         }
 
         if (fileSelector) {
             fileSelector.show(async (file?: File) => {
-                if (file) {
-                    await loadDocument(file);
+                if (file && await loadDocument(file)) {
+                    events.fire('doc.setName', file.name);
                 }
             });
         } else {
@@ -251,13 +264,15 @@ const registerDocEvents = (scene: Scene, events: Events) => {
                 if (fileHandles?.length === 1) {
                     const fileHandle = fileHandles[0];
 
-                    // null file handle incase loadDocument fails
-                    await loadDocument(await fileHandle.getFile());
+                    if (!await loadDocument(await fileHandle.getFile())) {
+                        return false;
+                    }
 
                     // store file handle for subsequent saves
                     documentFileHandle = fileHandle;
                     events.fire('doc.setName', fileHandle.name);
                     recentFiles.add(fileHandle);
+                    return true;
                 }
             } catch (error) {
                 if (error.name !== 'AbortError') {
@@ -268,7 +283,7 @@ const registerDocEvents = (scene: Scene, events: Events) => {
     });
 
     events.function('doc.openRecent', async (fileHandle: FileSystemFileHandle) => {
-        if (!events.invoke('scene.empty') && !await getResetConfirmation()) {
+        if (needsResetConfirmation() && !await getResetConfirmation()) {
             return false;
         }
 
@@ -279,12 +294,15 @@ const registerDocEvents = (scene: Scene, events: Events) => {
                 }
             }
 
-            await loadDocument(await fileHandle.getFile());
+            if (!await loadDocument(await fileHandle.getFile())) {
+                return false;
+            }
 
             // store file handle for subsequent saves
             documentFileHandle = fileHandle;
             events.fire('doc.setName', fileHandle.name);
             recentFiles.add(fileHandle);
+            return true;
         } catch (error) {
             if (error.name !== 'AbortError') {
                 console.error(error);
@@ -300,17 +318,21 @@ const registerDocEvents = (scene: Scene, events: Events) => {
     events.function('doc.save', async () => {
         if (documentFileHandle) {
             try {
-                await saveDocument({
+                const saved = await saveDocument({
                     stream: await documentFileHandle.createWritable()
                 });
-                events.fire('doc.saved');
+                if (saved) {
+                    events.fire('doc.saved');
+                }
+                return saved;
             } catch (error) {
                 if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
                     console.error(error);
                 }
+                return false;
             }
         } else {
-            await events.invoke('doc.saveAs');
+            return await events.invoke('doc.saveAs');
         }
     });
 
@@ -322,22 +344,40 @@ const registerDocEvents = (scene: Scene, events: Events) => {
                     types: SuperFileType,
                     suggestedName: 'scene.ssproj'
                 });
-                await saveDocument({ stream: await handle.createWritable() });
+                if (!await saveDocument({ stream: await handle.createWritable() })) {
+                    return false;
+                }
                 documentFileHandle = handle;
                 events.fire('doc.setName', handle.name);
                 events.fire('doc.saved');
                 recentFiles.add(handle);
+                return true;
             } catch (error) {
                 if (error.name !== 'AbortError') {
                     console.error(error);
                 }
+                return false;
             }
         } else {
-            await saveDocument({
+            if (!await saveDocument({
                 filename: 'scene.ssproj'
-            });
+            })) {
+                return false;
+            }
             events.fire('doc.saved');
+            return true;
         }
+    });
+
+    events.function('doc.saveToStream', async (stream: FileSystemWritableFileStream, filename?: string) => {
+        if (!await saveDocument({ stream })) {
+            return false;
+        }
+        if (filename) {
+            events.fire('doc.setName', filename);
+        }
+        events.fire('doc.saved');
+        return true;
     });
 
     // doc name

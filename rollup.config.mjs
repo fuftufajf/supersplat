@@ -55,6 +55,8 @@ const application = {
                         return contents.toString().replace('__BASE_HREF__', HREF);
                     }
                 },
+                { src: 'src/director-board.html' },
+                { src: 'src/director-board.js' },
                 { src: 'src/manifest.json' },
                 { src: 'static/images', dest: 'static' },
                 { src: 'static/icons', dest: 'static' },

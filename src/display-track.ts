@@ -1,3 +1,4 @@
+import { AnimTrack } from './anim-track';
 import { displayParams, getDisplayParam, type DisplayParam, type DisplayParamId } from './display-params';
 import { Events } from './events';
 import { Splat } from './splat';
@@ -67,6 +68,47 @@ class DisplayParamTrack {
         }
 
         this.keyframes.splice(index, 1);
+        return true;
+    }
+
+    moveKey(fromFrame: number, toFrame: number): boolean {
+        if (fromFrame === toFrame) {
+            return false;
+        }
+
+        const source = this.keyframes.find(key => key.frame === fromFrame);
+        if (!source) {
+            return false;
+        }
+
+        this.removeKey(toFrame);
+        source.frame = Math.round(toFrame);
+        this.sortKeyframes();
+        return true;
+    }
+
+    copyKey(fromFrame: number, toFrame: number): boolean {
+        if (fromFrame === toFrame) {
+            return false;
+        }
+
+        const source = this.keyframes.find(key => key.frame === fromFrame);
+        if (!source) {
+            return false;
+        }
+
+        const normalized = this.normalizeKeyframe(toFrame, source.value);
+        const existing = this.keyframes.find(key => key.frame === normalized.frame);
+        if (existing) {
+            if (existing.value === normalized.value) {
+                return false;
+            }
+            existing.value = normalized.value;
+            return true;
+        }
+
+        this.keyframes.push(normalized);
+        this.sortKeyframes();
         return true;
     }
 
@@ -144,15 +186,60 @@ class DisplayParamTrack {
     }
 }
 
+class DisplayParamAnimTrack implements AnimTrack {
+    private manager: DisplayTrackManager;
+    private paramId: DisplayParamId;
+
+    constructor(manager: DisplayTrackManager, paramId: DisplayParamId) {
+        this.manager = manager;
+        this.paramId = paramId;
+    }
+
+    get keys(): readonly number[] {
+        return this.manager.keys(this.paramId);
+    }
+
+    addKey(frame: number): boolean {
+        return this.manager.addKey(this.paramId, frame, false);
+    }
+
+    removeKey(frame: number): boolean {
+        return this.manager.removeKey(this.paramId, frame, false);
+    }
+
+    moveKey(fromFrame: number, toFrame: number): boolean {
+        return this.manager.moveKey(this.paramId, fromFrame, toFrame, false);
+    }
+
+    copyKey(fromFrame: number, toFrame: number): boolean {
+        return this.manager.copyKey(this.paramId, fromFrame, toFrame, false);
+    }
+
+    clear(): void {
+        this.manager.clear(this.paramId, false);
+    }
+
+    snapshot(): DisplayKeyframe[] {
+        return this.manager.snapshotParam(this.paramId);
+    }
+
+    restore(snapshot: DisplayKeyframe[]): void {
+        this.manager.restoreParam(this.paramId, snapshot);
+    }
+}
+
 class DisplayTrackManager {
     private events: Events;
     private tracks = new Map<DisplayParamId, DisplayParamTrack>();
+    private wrappers = new Map<DisplayParamId, DisplayParamAnimTrack>();
+    private activeParamId: DisplayParamId | null = null;
 
     constructor(events: Events) {
         this.events = events;
 
         displayParams.forEach((param) => {
             this.tracks.set(param.id, new DisplayParamTrack(param));
+            this.wrappers.set(param.id, new DisplayParamAnimTrack(this, param.id));
         });
 
         events.on('timeline.frame', (frame: number) => {
@@ -165,16 +252,22 @@ class DisplayTrackManager {
 
         events.on('selection.changed', () => {
             this.applyFrame(events.invoke('timeline.frame') ?? 0);
+            if (this.activeParamId) {
+                this.events.fire('track.keysLoaded');
+            }
         });
 
         events.on('scene.clear', () => {
             if (this.clearAll()) {
                 this.fireChanged();
+                if (this.activeParamId) {
+                    this.events.fire('track.keysCleared');
+                }
             }
         });
     }
 
-    addKey(paramId: DisplayParamId, frame?: number): boolean {
+    addKey(paramId: DisplayParamId, frame?: number, recordEdit = true): boolean {
         const param = getDisplayParam(paramId);
         const splat = this.getTargetSplat();
 
@@ -185,13 +278,20 @@ class DisplayTrackManager {
         const track = this.tracks.get(param.id);
         const keyFrame = this.normalizeFrame(frame ?? this.events.invoke('timeline.frame') ?? 0);
         const value = param.get(splat);
+        const hadKey = track.keys.includes(keyFrame);
 
-        return this.edit(`displayTrack.addKey:${param.id}`, () => {
+        const changed = this.edit(`displayTrack.addKey:${param.id}`, () => {
             return track.addKey(keyFrame, value);
-        }, param.id);
+        }, param.id, recordEdit);
+
+        if (changed && this.activeParamId === param.id) {
+            this.events.fire(hadKey ? 'track.keyUpdated' : 'track.keyAdded', keyFrame);
+        }
+
+        return changed;
     }
 
-    removeKey(paramId: DisplayParamId, frame?: number): boolean {
+    removeKey(paramId: DisplayParamId, frame?: number, recordEdit = true): boolean {
         const param = getDisplayParam(paramId);
         if (!param) {
             return false;
@@ -199,27 +299,85 @@ class DisplayTrackManager {
 
         const track = this.tracks.get(param.id);
         const keyFrame = this.normalizeFrame(frame ?? this.events.invoke('timeline.frame') ?? 0);
-
-        return this.edit(`displayTrack.removeKey:${param.id}`, () => {
+        const changed = this.edit(`displayTrack.removeKey:${param.id}`, () => {
             return track.removeKey(keyFrame);
-        }, param.id);
+        }, param.id, recordEdit);
+
+        if (changed && this.activeParamId === param.id) {
+            this.events.fire('track.keyRemoved', keyFrame);
+        }
+
+        return changed;
     }
 
-    clear(paramId?: DisplayParamId): boolean {
+    moveKey(paramId: DisplayParamId, fromFrame: number, toFrame: number, recordEdit = true): boolean {
+        const param = getDisplayParam(paramId);
+        if (!param) {
+            return false;
+        }
+
+        const track = this.tracks.get(param.id);
+        const from = this.normalizeFrame(fromFrame);
+        const to = this.normalizeFrame(toFrame);
+        const changed = this.edit(`displayTrack.moveKey:${param.id}`, () => {
+            return track.moveKey(from, to);
+        }, param.id, recordEdit);
+
+        if (changed && this.activeParamId === param.id) {
+            this.events.fire('track.keyMoved', from, to);
+        }
+
+        return changed;
+    }
+
+    copyKey(paramId: DisplayParamId, fromFrame: number, toFrame: number, recordEdit = true): boolean {
+        const param = getDisplayParam(paramId);
+        if (!param) {
+            return false;
+        }
+
+        const track = this.tracks.get(param.id);
+        const from = this.normalizeFrame(fromFrame);
+        const to = this.normalizeFrame(toFrame);
+        const hadKey = track.keys.includes(to);
+        const changed = this.edit(`displayTrack.copyKey:${param.id}`, () => {
+            return track.copyKey(from, to);
+        }, param.id, recordEdit);
+
+        if (changed && this.activeParamId === param.id) {
+            this.events.fire(hadKey ? 'track.keyUpdated' : 'track.keyAdded', to);
+        }
+
+        return changed;
+    }
+
+    clear(paramId?: DisplayParamId, recordEdit = true): boolean {
         if (paramId) {
             const param = getDisplayParam(paramId);
             if (!param) {
                 return false;
             }
 
-            return this.edit(`displayTrack.clear:${param.id}`, () => {
+            const changed = this.edit(`displayTrack.clear:${param.id}`, () => {
                 return this.tracks.get(param.id).clear();
-            }, param.id);
+            }, param.id, recordEdit);
+
+            if (changed && this.activeParamId === param.id) {
+                this.events.fire('track.keysCleared');
+            }
+
+            return changed;
         }
 
-        return this.edit('displayTrack.clearAll', () => {
+        const changed = this.edit('displayTrack.clearAll', () => {
             return this.clearAll();
-        });
+        }, undefined, recordEdit);
+
+        if (changed && this.activeParamId) {
+            this.events.fire('track.keysCleared');
+        }
+
+        return changed;
     }
 
     keys(paramId: DisplayParamId): number[] {
@@ -253,6 +411,11 @@ class DisplayTrackManager {
         return result;
     }
 
+    snapshotParam(paramId: DisplayParamId): DisplayKeyframe[] {
+        const param = getDisplayParam(paramId);
+        return param ? this.tracks.get(param.id).snapshot() : [];
+    }
+
     restore(snapshot: DisplayTrackSnapshot = {}) {
         displayParams.forEach((param) => {
             this.tracks.get(param.id).restore(snapshot[param.id] ?? []);
@@ -262,7 +425,48 @@ class DisplayTrackManager {
         this.applyFrame(this.events.invoke('timeline.frame') ?? 0);
     }
 
-    private edit(name: string, mutate: () => boolean, changedParamId?: DisplayParamId) {
+    restoreParam(paramId: DisplayParamId, snapshot: DisplayKeyframe[] = []) {
+        const param = getDisplayParam(paramId);
+        if (!param) {
+            return;
+        }
+
+        this.tracks.get(param.id).restore(snapshot);
+        this.fireChanged(param.id);
+        this.applyFrame(this.events.invoke('timeline.frame') ?? 0);
+
+        if (this.activeParamId === param.id) {
+            this.events.fire('track.keysLoaded');
+        }
+    }
+
+    activeParam(): DisplayParamId | null {
+        return this.activeParamId;
+    }
+
+    setActiveParam(paramId: DisplayParamId | null): boolean {
+        if (paramId && !getDisplayParam(paramId)) {
+            return false;
+        }
+
+        if (this.activeParamId === paramId) {
+            return false;
+        }
+
+        this.activeParamId = paramId;
+        this.events.fire('displayTrack.activeParamChanged', this.activeParamId);
+        this.events.fire('track.keysLoaded');
+        return true;
+    }
+
+    activeTrack(): AnimTrack | null {
+        if (!this.activeParamId || !this.getTargetSplat()) {
+            return null;
+        }
+        return this.wrappers.get(this.activeParamId) ?? null;
+    }
+
+    private edit(name: string, mutate: () => boolean, changedParamId?: DisplayParamId, recordEdit = true) {
         const before = this.snapshot();
         if (!mutate()) {
             return false;
@@ -271,7 +475,9 @@ class DisplayTrackManager {
         const after = this.snapshot();
         this.fireChanged(changedParamId);
         this.applyFrame(this.events.invoke('timeline.frame') ?? 0);
-        this.events.fire('edit.add', new DisplayTrackEditOp(name, this, before, after), true);
+        if (recordEdit) {
+            this.events.fire('edit.add', new DisplayTrackEditOp(name, this, before, after), true);
+        }
         return true;
     }
 
@@ -335,6 +541,18 @@ const registerDisplayTrackEvents = (events: Events) => {
         manager.clear(paramId);
     });
 
+    events.on('displayTrack.moveKey', (paramId: DisplayParamId, fromFrame: number, toFrame: number) => {
+        manager.moveKey(paramId, fromFrame, toFrame);
+    });
+
+    events.on('displayTrack.copyKey', (paramId: DisplayParamId, fromFrame: number, toFrame: number) => {
+        manager.copyKey(paramId, fromFrame, toFrame);
+    });
+
+    events.on('displayTrack.setActiveParam', (paramId: DisplayParamId | null) => {
+        manager.setActiveParam(paramId);
+    });
+
     events.function('displayTrack.keys', (paramId: DisplayParamId) => {
         return manager.keys(paramId);
     });
@@ -349,6 +567,14 @@ const registerDisplayTrackEvents = (events: Events) => {
 
     events.function('docDeserialize.displayTracks', (snapshot: DisplayTrackSnapshot = {}) => {
         manager.restore(snapshot);
+    });
+
+    events.function('displayTrack.activeParam', () => {
+        return manager.activeParam();
+    });
+
+    events.function('displayTrack.activeTrack', () => {
+        return manager.activeTrack();
     });
 };
 

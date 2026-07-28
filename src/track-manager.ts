@@ -7,15 +7,16 @@ import { Events } from './events';
  * key operations. Resolves which track the user is interacting
  * with and ensures all mutations are undoable.
  *
- * For now, the active track is always the camera track.
- * When selection-based switching is added, getActiveTrack()
- * will inspect the current selection.
+ * Director display tracks can temporarily take over the native timeline.
+ * Without an active Director parameter, key operations fall back to the
+ * camera animation track.
  */
 const registerTrackManagerEvents = (events: Events) => {
     // Get the animation track of the currently active element.
-    // For now, always returns the camera animation track.
     const getActiveTrack = (): AnimTrack | null => {
-        return events.invoke('camera.animTrack') ?? null;
+        return events.invoke('displayTrack.activeTrack') ??
+            events.invoke('camera.animTrack') ??
+            null;
     };
 
     // Helper: execute an edit on the active track wrapped in undo.

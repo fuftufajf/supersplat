@@ -80,6 +80,7 @@ const main = async () => {
 
     // url
     const url = new URL(window.location.href);
+    document.body.dataset.embedded = url.searchParams.get('embedded') === '1' ? '1' : '0';
 
     // edit history
     const editHistory = new EditHistory(events);
@@ -102,7 +103,6 @@ const main = async () => {
     registerTransformHandlerEvents(events);
     registerPlySequenceEvents(events);
     registerPublishEvents(events);
-    registerIframeApi(events);
 
     // initialize shortcuts
     const shortcutManager = new ShortcutManager(events);
@@ -247,6 +247,10 @@ const main = async () => {
     registerDocEvents(scene, events);
     registerRenderEvents(scene, events);
     initFileHandler(scene, events, editorUI.appContainer.dom);
+    registerIframeApi(events, editorUI.canvas);
+    if (document.body.dataset.embedded === '1') {
+        events.fire('statusBar.panelChanged', 'timeline');
+    }
 
     // load async models
     scene.start();

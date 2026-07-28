@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <title>Director Board</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --db-bg: #0b1014;
+            --db-panel: rgba(17, 24, 31, 0.96);
+            --db-panel-border: rgba(255, 255, 255, 0.09);
+            --db-text: #dce4df;
+            --db-muted: rgba(220, 228, 223, 0.68);
+            --db-accent: #d2c57c;
+            --db-accent-soft: rgba(210, 197, 124, 0.14);
+            --db-green: #6fd08c;
+            --db-red: #f27a7a;
+            --db-radius: 10px;
+            --db-font-mono: "Cascadia Mono", "Consolas", monospace;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at top right, rgba(210, 197, 124, 0.14), transparent 28%),
+                linear-gradient(180deg, #0d1318 0%, #0b1014 100%);
+            color: var(--db-text);
+            font-family: "Aptos", "Segoe UI", sans-serif;
+            font-size: 13px;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        .db-layout {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .db-panel {
+            width: 420px;
+            min-width: 320px;
+            max-width: min(460px, 100vw);
+            padding: 16px;
+            background: var(--db-panel);
+            border-right: 1px solid var(--db-panel-border);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            backdrop-filter: blur(16px);
+        }
+
+        .db-layout[data-stage-full="1"] .db-panel {
+            display: none;
+        }
+
+        .db-header h1 {
+            margin: 0;
+            color: var(--db-accent);
+            font-size: 16px;
+            letter-spacing: 0.02em;
+        }
+
+        .db-header p {
+            margin: 5px 0 0;
+            color: var(--db-muted);
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .db-divider {
+            margin: 0;
+            border: none;
+            border-top: 1px solid var(--db-panel-border);
+        }
+
+        .db-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .db-label {
+            font-size: 10px;
+            color: var(--db-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .db-output,
+        .db-summary,
+        .db-mini-note,
+        .db-key-list {
+            color: var(--db-muted);
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .db-output {
+            min-height: 1.2em;
+            word-break: break-word;
+            padding: 6px 8px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+        }
+
+        .db-output.is-error {
+            color: #f27a7a;
+            border-color: rgba(242, 122, 122, 0.38);
+            background: rgba(242, 122, 122, 0.1);
+        }
+
+        .db-output.is-saved {
+            color: #dce4df;
+            border-color: rgba(221, 206, 132, 0.68);
+            background: linear-gradient(90deg, rgba(221, 206, 132, 0.2), rgba(121, 176, 143, 0.12));
+            box-shadow: 0 0 0 1px rgba(221, 206, 132, 0.12), 0 10px 24px rgba(0, 0, 0, 0.16);
+        }
+
+        .db-summary {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .db-summary span {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding: 6px 8px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.028);
+        }
+
+        .db-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .db-btn,
+        .db-chip,
+        .db-eye,
+        .db-splat-name {
+            appearance: none;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--db-text);
+            border-radius: 8px;
+            padding: 7px 10px;
+            font: inherit;
+            cursor: pointer;
+            transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+
+        .db-btn:hover,
+        .db-chip:hover,
+        .db-eye:hover,
+        .db-splat-name:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.22);
+        }
+
+        .db-btn[disabled],
+        .db-chip[disabled],
+        .db-eye[disabled] {
+            cursor: not-allowed;
+            opacity: 0.45;
+        }
+
+        .db-btn.is-accent,
+        .db-chip.is-accent {
+            border-color: rgba(210, 197, 124, 0.55);
+            background: var(--db-accent-soft);
+            color: var(--db-accent);
+        }
+
+        .db-input,
+        .db-number,
+        .db-select,
+        .db-color {
+            width: 100%;
+            border: 1px solid var(--db-panel-border);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.045);
+            color: var(--db-text);
+            font: inherit;
+            padding: 7px 10px;
+        }
+
+        .db-color {
+            min-height: 34px;
+            padding: 3px;
+        }
+
+        .db-native-color {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .db-color-trigger {
+            width: 100%;
+            min-height: 34px;
+            display: grid;
+            grid-template-columns: 34px 1fr;
+            gap: 8px;
+            align-items: center;
+            padding: 5px 8px 5px 5px;
+            border: 1px solid var(--db-panel-border);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.045);
+            color: var(--db-text);
+            font: inherit;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .db-color-trigger:hover,
+        .db-color-trigger.is-active {
+            border-color: rgba(210, 197, 124, 0.5);
+            background: rgba(210, 197, 124, 0.08);
+        }
+
+        .db-color-chip {
+            width: 26px;
+            height: 22px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            background:
+                linear-gradient(45deg, rgba(255, 255, 255, 0.22) 25%, transparent 25% 75%, rgba(255, 255, 255, 0.22) 75%),
+                linear-gradient(45deg, rgba(255, 255, 255, 0.22) 25%, transparent 25% 75%, rgba(255, 255, 255, 0.22) 75%),
+                var(--db-color-value, #ffffff);
+            background-position: 0 0, 5px 5px, 0 0;
+            background-size: 10px 10px, 10px 10px, auto;
+        }
+
+        .db-color-value {
+            color: var(--db-muted);
+            font-family: var(--db-font-mono);
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .db-color-picker {
+            position: fixed;
+            z-index: 40;
+            width: 286px;
+            padding: 12px;
+            border: 1px solid rgba(210, 197, 124, 0.32);
+            border-radius: 14px;
+            background: rgba(15, 21, 26, 0.98);
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+            backdrop-filter: blur(18px);
+        }
+
+        .db-color-picker[hidden] {
+            display: none;
+        }
+
+        .db-picker-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 10px;
+            color: var(--db-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .db-picker-close {
+            min-width: 26px;
+            height: 24px;
+            padding: 0;
+            border-radius: 7px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--db-muted);
+            cursor: pointer;
+        }
+
+        .db-picker-close:hover {
+            color: var(--db-text);
+            border-color: rgba(255, 255, 255, 0.24);
+        }
+
+        .db-color-plane {
+            position: relative;
+            height: 142px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background:
+                linear-gradient(to top, #000000, transparent),
+                linear-gradient(to right, #ffffff, hsla(var(--db-picker-hue, 0), 100%, 50%, 1));
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .db-color-cursor {
+            position: absolute;
+            left: calc(var(--db-picker-sat, 100) * 1%);
+            top: calc((100 - var(--db-picker-val, 100)) * 1%);
+            width: 14px;
+            height: 14px;
+            border: 2px solid #ffffff;
+            border-radius: 999px;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .db-hue-slider {
+            width: 100%;
+            margin: 10px 0 8px;
+            accent-color: var(--db-accent);
+        }
+
+        .db-picker-row {
+            display: grid;
+            grid-template-columns: 84px 1fr;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .db-picker-preview {
+            height: 34px;
+            border-radius: 9px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: var(--db-color-value, #ffffff);
+        }
+
+        .db-picker-hex {
+            width: 100%;
+            border: 1px solid var(--db-panel-border);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.045);
+            color: var(--db-text);
+            font: 12px var(--db-font-mono);
+            padding: 8px 10px;
+            text-transform: uppercase;
+        }
+
+        .db-picker-label {
+            margin: 10px 0 6px;
+            color: var(--db-muted);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .db-color-swatches {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .db-color-swatch {
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            border: 1px solid rgba(255, 255, 255, 0.34);
+            border-radius: 7px;
+            background: var(--db-color-value, #ffffff);
+            cursor: pointer;
+        }
+
+        .db-color-swatch:hover {
+            border-color: rgba(210, 197, 124, 0.75);
+            transform: translateY(-1px);
+        }
+
+        .db-number-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .db-two-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .db-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .db-field label {
+            color: var(--db-muted);
+            font-size: 11px;
+        }
+
+        .db-toggle-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .db-toggle {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--db-muted);
+            font-size: 11px;
+        }
+
+        .db-toggle input {
+            accent-color: var(--db-accent);
+        }
+
+        .db-range-control {
+            display: grid;
+            gap: 6px;
+            padding: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .db-range-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            color: var(--db-muted);
+            font-size: 11px;
+        }
+
+        .db-range-head strong {
+            color: var(--db-text);
+            font-weight: 600;
+        }
+
+        .db-range-control input[type="range"] {
+            width: 100%;
+            accent-color: var(--db-accent);
+        }
+
+        .db-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .db-splat-row {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .db-splat-row.is-selected {
+            border-color: rgba(210, 197, 124, 0.45);
+            background: rgba(210, 197, 124, 0.08);
+        }
+
+        .db-splat-index {
+            width: 24px;
+            height: 24px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: var(--db-muted);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .db-splat-name {
+            text-align: left;
+            padding: 6px 8px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .db-eye {
+            padding: 6px 8px;
+            min-width: 46px;
+        }
+
+        .db-group {
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            overflow: visible;
+        }
+
+        .db-group[open] {
+            border-color: rgba(210, 197, 124, 0.28);
+            box-shadow: inset 0 1px 0 rgba(210, 197, 124, 0.1);
+        }
+
+        .db-group summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .db-group summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .db-group-title {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            min-height: 20px;
+        }
+
+        .db-group-title::before {
+            content: "+";
+            width: 18px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            border: 1px solid rgba(210, 197, 124, 0.35);
+            border-radius: 6px;
+            color: var(--db-accent);
+            font-family: var(--db-font-mono);
+            font-size: 12px;
+            line-height: 1;
+        }
+
+        .db-group[open] .db-group-title::before {
+            content: "-";
+        }
+
+        .db-group-title strong {
+            color: var(--db-text);
+            font-size: 13px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .db-group-title-meta {
+            margin-left: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .db-group-badge {
+            color: var(--db-accent);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .db-group-description {
+            color: var(--db-muted);
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .db-group:not([open]) .db-group-description,
+        .db-group:not([open]) .db-group-title-meta,
+        .db-group:not([open]) .db-group-badge,
+        .db-group:not([open]) .db-group-count {
+            display: none;
+        }
+
+        .db-group-body {
+            padding: 0 12px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .db-param {
+            padding: 10px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .db-param.is-active {
+            border-color: rgba(210, 197, 124, 0.45);
+            background: rgba(210, 197, 124, 0.08);
+        }
+
+        .db-param-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-start;
+            gap: 8px;
+        }
+
+        .db-param-title {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .db-param-title strong {
+            color: var(--db-text);
+            font-size: 12px;
+        }
+
+        .db-param-title span {
+            color: var(--db-muted);
+            font-size: 10px;
+        }
+
+        .db-param-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-start;
+            gap: 6px;
+        }
+
+        .db-chip {
+            padding: 5px 8px;
+            font-size: 11px;
+        }
+
+        .db-keyframe-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding-top: 4px;
+        }
+
+        .db-key-main {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 32px;
+            padding: 6px 10px;
+            font-weight: 600;
+        }
+
+        .db-key-main-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            border: 1px solid currentColor;
+            font-size: 12px;
+            line-height: 1;
+            flex: 0 0 auto;
+        }
+
+        .db-key-main-text {
+            white-space: nowrap;
+        }
+
+        .db-chip.is-keyed {
+            border-color: rgba(111, 208, 140, 0.45);
+            color: var(--db-green);
+            background: rgba(111, 208, 140, 0.1);
+        }
+
+        .db-chip.is-key-action {
+            border-color: rgba(221, 206, 132, 0.46);
+            color: var(--db-accent);
+            background: rgba(221, 206, 132, 0.08);
+        }
+
+        .db-key-list {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            font-family: var(--db-font-mono);
+            font-size: 11px;
+            color: var(--db-muted);
+        }
+
+        .db-key-list strong {
+            color: var(--db-text);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .db-empty {
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px dashed rgba(255, 255, 255, 0.12);
+            color: var(--db-muted);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .db-main {
+            position: relative;
+            flex: 1;
+            min-width: 0;
+            background: #05080b;
+        }
+
+        .db-iframe {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: #05080b;
+        }
+
+        .db-stage-restore {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 40;
+            display: none;
+            border-radius: 999px;
+            background: rgba(11, 16, 20, 0.78);
+            color: var(--db-accent);
+            border-color: rgba(210, 197, 124, 0.4);
+            backdrop-filter: blur(14px);
+        }
+
+        .db-layout[data-stage-full="1"] .db-stage-restore {
+            display: inline-flex;
+        }
+
+        @media (max-width: 960px) {
+            .db-layout {
+                flex-direction: column;
+            }
+
+            .db-panel {
+                width: 100%;
+                max-width: none;
+                min-width: 0;
+                max-height: 52vh;
+                border-right: none;
+                border-bottom: 1px solid var(--db-panel-border);
+            }
+
+            .db-main {
+                min-height: 48vh;
+            }
+
+            .db-number-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="db-layout" data-stage-full="0">
+        <div class="db-panel">
+            <div class="db-header">
+                <h1>Director Board</h1>
+                <p>External control surface for SuperSplat. The iframe is the scene engine; this panel is the operator desk.</p>
+            </div>
+
+            <hr class="db-divider" />
+
+            <div class="db-section">
+                <div class="db-label">Scene</div>
+                <div class="db-row">
+                    <button id="btn-open-project" class="db-btn" type="button">Open project</button>
+                    <button id="btn-save-project" class="db-btn is-accent" type="button">Save</button>
+                    <button id="btn-save-project-as" class="db-btn" type="button">Save as</button>
+                </div>
+                <div class="db-row">
+                    <button id="btn-import" class="db-btn is-accent" type="button">Load splat</button>
+                    <button id="btn-refresh" class="db-btn" type="button">Read state</button>
+                    <button id="btn-stage-full" class="db-btn" type="button">Stage Full</button>
+                </div>
+                <input id="file-input" type="file" accept=".ply,.splat,.sog,.json,.ksplat,.spz" multiple hidden />
+                <input id="project-input" type="file" accept=".ssproj" hidden />
+                <div id="status-strip" class="db-output">waiting for scene...</div>
+                <div id="scene-summary" class="db-summary" aria-live="polite">
+                    <span>bridge: loading</span>
+                    <span>splats: 0</span>
+                    <span>frame: 0</span>
+                </div>
+            </div>
+
+            <hr class="db-divider" />
+
+            <details class="db-group" open>
+                <summary>
+                    <div class="db-group-title"><strong>View &amp; environment</strong></div>
+                    <div class="db-group-description">Controls moved from the native Studio view panel.</div>
+                </summary>
+                <div class="db-group-body">
+                    <div class="db-two-grid">
+                        <div class="db-field">
+                            <label for="view-bg-color">Background</label>
+                            <input id="view-bg-color" class="db-color" type="color" value="#000000" />
+                        </div>
+                        <div class="db-field">
+                            <label for="view-point-color">Point color</label>
+                            <input id="view-point-color" class="db-color" type="color" value="#ffffff" />
+                        </div>
+                    </div>
+                    <label class="db-range-control">
+                        <span class="db-range-head"><span>Point opacity</span><strong id="view-point-alpha-readout">1.00</strong></span>
+                        <input id="view-point-alpha" type="range" min="0" max="1" step="0.01" value="1" />
+                    </label>
+                    <div class="db-two-grid">
+                        <div class="db-field">
+                            <label for="view-selected-color">Selected color</label>
+                            <input id="view-selected-color" class="db-color" type="color" value="#ff9900" />
+                        </div>
+                        <div class="db-field">
+                            <label for="view-locked-color">Locked color</label>
+                            <input id="view-locked-color" class="db-color" type="color" value="#888888" />
+                        </div>
+                    </div>
+                    <label class="db-range-control">
+                        <span class="db-range-head"><span>Selected mix</span><strong id="view-selected-alpha-readout">1.00</strong></span>
+                        <input id="view-selected-alpha" type="range" min="0" max="1" step="0.01" value="1" />
+                    </label>
+                    <label class="db-range-control">
+                        <span class="db-range-head"><span>Locked mix</span><strong id="view-locked-alpha-readout">1.00</strong></span>
+                        <input id="view-locked-alpha" type="range" min="0" max="1" step="0.01" value="1" />
+                    </label>
+                    <div class="db-field">
+                        <label for="view-tonemapping">Tonemapping</label>
+                        <select id="view-tonemapping" class="db-select">
+                            <option value="linear">Linear</option>
+                            <option value="neutral">Neutral</option>
+                            <option value="aces">ACES</option>
+                            <option value="aces2">ACES 2</option>
+                            <option value="filmic">Filmic</option>
+                            <option value="hejl">Hejl</option>
+                        </select>
+                    </div>
+                    <label class="db-range-control">
+                        <span class="db-range-head"><span>FOV</span><strong id="view-fov-readout">60</strong></span>
+                        <input id="view-fov" type="range" min="10" max="120" step="1" value="60" />
+                    </label>
+                    <label class="db-range-control">
+                        <span class="db-range-head"><span>Fly speed</span><strong id="view-fly-speed-readout">1.0</strong></span>
+                        <input id="view-fly-speed" type="range" min="0.1" max="30" step="0.1" value="1" />
+                    </label>
+                    <label class="db-range-control">
+                        <span class="db-range-head"><span>SH bands</span><strong id="view-sh-bands-readout">3</strong></span>
+                        <input id="view-sh-bands" type="range" min="0" max="3" step="1" value="3" />
+                    </label>
+                    <label class="db-range-control">
+                        <span class="db-range-head"><span>Point size</span><strong id="view-point-size-readout">2.0</strong></span>
+                        <input id="view-point-size" type="range" min="0" max="1" step="0.001" value="0.287" />
+                    </label>
+                    <label class="db-range-control">
+                        <span class="db-range-head"><span>Ring size</span><strong id="view-ring-size-readout">0.040</strong></span>
+                        <input id="view-ring-size" type="range" min="0" max="0.5" step="0.005" value="0.04" />
+                    </label>
+                    <div class="db-toggle-grid">
+                        <label class="db-toggle"><input id="view-grid-visible" type="checkbox" /> Grid</label>
+                        <label class="db-toggle"><input id="view-bound-visible" type="checkbox" /> Bound</label>
+                        <label class="db-toggle"><input id="view-camera-poses-visible" type="checkbox" /> Camera poses</label>
+                        <label class="db-toggle"><input id="view-outline-selection" type="checkbox" /> Outline selection</label>
+                        <label class="db-toggle"><input id="view-centers-gaussian-color" type="checkbox" /> Gaussian point color</label>
+                    </div>
+                </div>
+            </details>
+
+            <hr class="db-divider" />
+
+            <div class="db-section">
+                <div class="db-label">Timeline</div>
+                <div class="db-row">
+                    <button id="btn-play" class="db-btn" type="button">Play</button>
+                    <button id="btn-pause" class="db-btn" type="button">Pause</button>
+                    <button id="btn-restart" class="db-btn" type="button">Restart</button>
+                </div>
+                <label class="db-range-control">
+                    <span class="db-range-head"><span>Scrub</span><strong id="timeline-readout">0 / 0</strong></span>
+                    <input id="timeline-range" type="range" min="0" max="1" step="1" value="0" />
+                </label>
+                <div class="db-number-grid">
+                    <div class="db-field">
+                        <label for="timeline-frames">Frames</label>
+                        <input id="timeline-frames" class="db-number" type="number" min="1" step="1" />
+                    </div>
+                    <div class="db-field">
+                        <label for="timeline-fps">FPS</label>
+                        <input id="timeline-fps" class="db-number" type="number" min="1" step="1" />
+                    </div>
+                    <div class="db-field">
+                        <label for="timeline-smoothness">Smoothness</label>
+                        <input id="timeline-smoothness" class="db-number" type="number" min="0" step="0.1" />
+                    </div>
+                </div>
+            </div>
+
+            <hr class="db-divider" />
+
+            <details class="db-group" open>
+                <summary>
+                    <div class="db-group-title"><strong>Camera orbit</strong></div>
+                    <div class="db-group-description">Build a constant orbit around world origin. Set the camera first, then generate keys.</div>
+                </summary>
+                <div class="db-group-body">
+                    <div class="db-number-grid">
+                        <div class="db-field">
+                            <label for="orbit-duration">Duration seconds</label>
+                            <input id="orbit-duration" class="db-number" type="number" min="1" max="120" step="0.5" value="12" />
+                        </div>
+                        <div class="db-field">
+                            <label for="orbit-keys">Orbit keys</label>
+                            <input id="orbit-keys" class="db-number" type="number" min="4" max="64" step="1" value="16" />
+                        </div>
+                        <div class="db-field">
+                            <label for="orbit-direction">Direction</label>
+                            <select id="orbit-direction" class="db-select">
+                                <option value="counterclockwise">Counterclockwise</option>
+                                <option value="clockwise">Clockwise</option>
+                            </select>
+                        </div>
+                        <div class="db-field">
+                            <label for="orbit-look-pitch">Look pitch deg</label>
+                            <input id="orbit-look-pitch" class="db-number" type="number" min="-85" max="85" step="1" placeholder="current" />
+                        </div>
+                    </div>
+                    <div class="db-row">
+                        <button id="btn-build-orbit" class="db-btn is-accent" type="button">Build origin orbit</button>
+                        <button id="btn-preview-orbit" class="db-btn" type="button">Play orbit</button>
+                    </div>
+                    <div id="orbit-summary" class="db-mini-note">Set the camera angle you like, or type a look pitch: 0 is horizon, negative looks down.</div>
+                </div>
+            </details>
+
+            <hr class="db-divider" />
+
+            <div class="db-section">
+                <div class="db-label">Splats</div>
+                <div id="selection-summary" class="db-mini-note">No splat selected yet.</div>
+                <div id="splat-list" class="db-stack"></div>
+            </div>
+
+            <hr class="db-divider" />
+
+            <div class="db-section">
+                <div class="db-label">Director controls</div>
+                <div class="db-mini-note">Move the timeline, set a value, then use the <strong>Add keyframe</strong> control attached to that parameter. Keyed values update live while playback runs.</div>
+                <div class="db-mini-note">Default resets the current value. Clear keys removes animation keys only.</div>
+                <div id="param-groups" class="db-stack"></div>
+            </div>
+
+        </div>
+
+        <div class="db-main">
+            <iframe id="module-frame" class="db-iframe" title="SuperSplat scene" sandbox="allow-same-origin allow-scripts allow-downloads"></iframe>
+            <button id="btn-exit-stage-full" class="db-btn db-stage-restore" type="button">Show Board</button>
+        </div>
+    </div>
+
+    <div id="db-color-picker" class="db-color-picker" hidden>
+        <div class="db-picker-title">
+            <span id="db-color-picker-label">Color</span>
+            <button id="db-color-picker-close" class="db-picker-close" type="button" aria-label="Close color picker">x</button>
+        </div>
+        <div id="db-color-plane" class="db-color-plane">
+            <span class="db-color-cursor" aria-hidden="true"></span>
+        </div>
+        <input id="db-color-hue" class="db-hue-slider" type="range" min="0" max="359" step="1" value="0" aria-label="Hue" />
+        <div class="db-picker-row">
+            <div id="db-color-preview" class="db-picker-preview"></div>
+            <input id="db-color-hex" class="db-picker-hex" type="text" value="#FFFFFF" maxlength="7" aria-label="Hex color" />
+        </div>
+        <div class="db-picker-label">Recent</div>
+        <div id="db-color-recents" class="db-color-swatches"></div>
+        <div class="db-picker-label">Palette</div>
+        <div id="db-color-presets" class="db-color-swatches"></div>
+    </div>
+
+    <script>
+        const boardScript = document.createElement('script');
+        boardScript.src = './director-board.js?boardBust=' + encodeURIComponent(String(Date.now()));
+        boardScript.async = false;
+        document.currentScript.after(boardScript);
+    </script>
+</body>
+</html>

@@ -11,6 +11,7 @@ uniform vec4 clrScale;
 
 varying mediump vec4 texCoord_flags;            // xy: texCoord, z: selected, w: locked
 varying mediump vec4 color;
+varying mediump float revealAlpha;
 
 #if PICK_PASS
     uniform uint pickOp;                        // 0: add, 1: remove, 2: set
@@ -20,7 +21,9 @@ varying mediump vec4 color;
 mediump vec4 discardVec = vec4(0.0, 0.0, 2.0, 1.0);
 
 uniform float saturation;
+uniform float splatScale;
 uniform float revealProgress;
+uniform float revealSoftness;
 uniform vec2 revealBounds;
 
 vec3 applySaturation(vec3 color) {
@@ -71,9 +74,18 @@ void main(void) {
     vec3 modelCenter = getCenter();
     vec3 revealCenter = (applyPaletteTransform(mat4(1.0)) * vec4(modelCenter, 1.0)).xyz;
     float tAxis = (revealCenter.y - revealBounds.x) / max(1e-5, revealBounds.y - revealBounds.x);
-    if (tAxis > revealProgress) {
-        gl_Position = discardVec;
-        return;
+    if (revealSoftness <= 0.0) {
+        if (tAxis > revealProgress) {
+            gl_Position = discardVec;
+            return;
+        }
+        revealAlpha = 1.0;
+    } else {
+        revealAlpha = 1.0 - smoothstep(revealProgress, revealProgress + revealSoftness, tAxis);
+        if (revealAlpha <= 0.001) {
+            gl_Position = discardVec;
+            return;
+        }
     }
 
     SplatCenter center;
@@ -90,7 +102,7 @@ void main(void) {
         return;
     }
 
-    gl_Position = center.proj + vec4(corner.offset, 0.0);
+    gl_Position = center.proj + vec4(corner.offset * splatScale, 0.0);
 
     // store texture coord and locked state
     texCoord_flags = vec4(
@@ -157,6 +169,7 @@ void main(void) {
 const fragmentShader = /* glsl*/`
 varying mediump vec4 texCoord_flags;
 varying mediump vec4 color;
+varying mediump float revealAlpha;
 
 uniform bool outlineMode;
 uniform float ringSize;
@@ -197,6 +210,7 @@ void main(void) {
     #else
         mediump float norm = normExp(A);
         mediump float alpha = norm * color.a;
+        alpha *= revealAlpha;
         alpha *= pulseFactor;
 
         if (texCoord_flags.w == 0.0 && ringSize > 0.0) {

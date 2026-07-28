@@ -10,13 +10,35 @@
         <meta name="description" content="SuperSplat is an advanced browser-based editor for manipulating and optimizing 3D Gaussian Splats. It is open source and engine agnostic." />
         <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
 
+        <script>
+            (() => {
+                const params = new URLSearchParams(window.location.search);
+                const isEmbedded = params.get('embedded') === '1';
+                const forceEditor = params.get('editor') === '1';
+                if (isEmbedded || forceEditor) {
+                    return;
+                }
+
+                const boardPath = window.location.pathname.replace(/[^/]*$/, 'director-board.html');
+                window.location.replace(`${boardPath}${window.location.search}${window.location.hash}`);
+            })();
+        </script>
+
         <!-- Service worker -->
         <script>
             const sw = navigator.serviceWorker;
             if (sw) {
-                sw.register('./sw.js')
-                    .then(reg => console.log('service worker registered', reg))
-                    .catch(err => console.log('failed to register service worker', err));
+                const noServiceWorker = new URLSearchParams(window.location.search).has('nosw');
+                if (noServiceWorker) {
+                    sw.getRegistrations()
+                        .then(regs => Promise.all(regs.map(reg => reg.unregister())))
+                        .then(() => console.log('service worker disabled for this preview'))
+                        .catch(err => console.log('failed to disable service worker', err));
+                } else {
+                    sw.register('./sw.js')
+                        .then(reg => console.log('service worker registered', reg))
+                        .catch(err => console.log('failed to register service worker', err));
+                }
             }
         </script>
     </head>

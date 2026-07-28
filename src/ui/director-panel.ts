@@ -1,6 +1,6 @@
 import { Button, Container, Label, SliderInput } from '@playcanvas/pcui';
 
-import { displayParams, type DisplayParam } from '../display-params';
+import { displayParams, type DisplayParam, type DisplayParamGroup } from '../display-params';
 import { Events } from '../events';
 import { Splat } from '../splat';
 import { localize } from './localization';
@@ -19,11 +19,26 @@ class DirectorSliderInput extends SliderInput {
 }
 
 type ParamRow = {
+    animRow: Container;
+    clearButton: Button;
     dragging: boolean;
     keyButton: Button;
+    keyInfo: Label;
+    nextButton: Button;
     param: DisplayParam;
+    prevButton: Button;
+    row: Container;
     slider: DirectorSliderInput;
+    trackButton: Button;
     updateKeyOnEnd: boolean;
+};
+
+const groupLabels: Record<DisplayParamGroup, string> = {
+    shape: 'Shape',
+    reveal: 'Reveal',
+    color: 'Color',
+    transform: 'Transform',
+    pulse: 'Pulse'
 };
 
 class DirectorPanel extends Container {
@@ -33,22 +48,18 @@ class DirectorPanel extends Container {
             id: 'director-panel',
             class: 'panel',
             flex: true,
-            flexDirection: 'column'
+            flexDirection: 'column',
+            hidden: true
         };
 
         super(args);
-
-        this.dom.style.margin = '8px 8px 0 8px';
-        this.dom.style.width = 'calc(100% - 16px)';
-        this.dom.style.flexShrink = '0';
-        this.dom.style.position = 'relative';
 
         ['pointerdown', 'pointerup', 'pointermove', 'wheel', 'dblclick'].forEach((eventName) => {
             this.dom.addEventListener(eventName, (event: Event) => event.stopPropagation());
         });
 
         const header = new Container({
-            class: 'panel-header'
+            class: ['panel-header', 'director-panel-header']
         });
 
         const icon = new Label({
@@ -62,33 +73,50 @@ class DirectorPanel extends Container {
         });
 
         const frameLabel = new Label({
+            class: 'director-frame-label',
             text: 'F0'
         });
-        frameLabel.dom.style.color = '#ff9900';
-        frameLabel.dom.style.fontWeight = 'bold';
-        frameLabel.dom.style.marginRight = '8px';
+
+        const collapseButton = new Button({
+            text: '<'
+        });
+        collapseButton.dom.classList.add('panel-header-button', 'director-header-action');
 
         const clearButton = new Button({
-            text: 'Clear'
+            text: 'Keys'
         });
-        clearButton.dom.classList.add('panel-header-button');
-        clearButton.dom.style.fontFamily = 'inherit';
-        clearButton.dom.style.fontSize = '11px';
-        clearButton.dom.style.textTransform = 'uppercase';
-        clearButton.dom.style.padding = '2px 8px';
+        clearButton.dom.classList.add('panel-header-button', 'director-header-action');
 
         header.append(icon);
         header.append(label);
         header.append(frameLabel);
         header.append(clearButton);
+        header.append(collapseButton);
+
+        const body = new Container({
+            class: 'director-panel-body',
+            flex: true,
+            flexDirection: 'column'
+        });
 
         this.append(header);
+        this.append(body);
 
+        let collapsed = false;
         let selected: Splat | null = null;
         let suppress = false;
+        let activeParamId = (events.invoke('displayTrack.activeParam') as DisplayParam['id'] | null) ?? null;
 
-        const hasDisplayTrackFunction = (name: string) => {
+        const displayLabel = (text: string) => {
+            return text.startsWith('panel.') ? localize(text) : text;
+        };
+
+        const hasEventFunction = (name: string) => {
             return events.functions.has(name);
+        };
+
+        const invokeOrDefault = <T>(name: string, fallback: T): T => {
+            return hasEventFunction(name) ? (events.invoke(name) as T) : fallback;
         };
 
         const currentFrame = () => {
@@ -96,7 +124,7 @@ class DirectorPanel extends Container {
         };
 
         const getParamKeys = (paramId: DisplayParam['id']) => {
-            if (!hasDisplayTrackFunction('displayTrack.keys')) {
+            if (!hasEventFunction('displayTrack.keys')) {
                 return [];
             }
             return (events.invoke('displayTrack.keys', paramId) as number[] ?? []);
@@ -106,6 +134,124 @@ class DirectorPanel extends Container {
             return getParamKeys(paramId).includes(currentFrame());
         };
 
+        const getAdjacentKey = (paramId: DisplayParam['id'], direction: -1 | 1) => {
+            const keys = getParamKeys(paramId);
+            const frame = currentFrame();
+            if (direction < 0) {
+                for (let i = keys.length - 1; i >= 0; i--) {
+                    if (keys[i] < frame) {
+                        return keys[i];
+                    }
+                }
+            } else {
+                for (let i = 0; i < keys.length; i++) {
+                    if (keys[i] > frame) {
+                        return keys[i];
+                    }
+                }
+            }
+            return null;
+        };
+
+        const createSection = (title: string) => {
+            const section = new Container({
+                class: 'director-section'
+            });
+            const sectionLabel = new Label({
+                class: 'director-section-label',
+                text: title
+            });
+            section.append(sectionLabel);
+            body.append(section);
+            return section;
+        };
+
+        const createViewControls = () => {
+            const section = createSection('View');
+
+            const modeRow = new Container({
+                class: ['director-row', 'director-mode-row']
+            });
+
+            const modeLabel = new Label({
+                class: 'director-row-label',
+                text: 'Display'
+            });
+
+            const modeButtons = new Container({
+                class: 'director-mode-buttons'
+            });
+
+            const pointsButton = new Button({
+                text: 'Points'
+            });
+            pointsButton.dom.classList.add('director-mode-button');
+
+            const ringsButton = new Button({
+                text: 'Rings'
+            });
+            ringsButton.dom.classList.add('director-mode-button');
+
+            modeButtons.append(pointsButton);
+            modeButtons.append(ringsButton);
+            modeRow.append(modeLabel);
+            modeRow.append(modeButtons);
+            section.append(modeRow);
+
+            const pointSizeRow = new Container({
+                class: 'director-row'
+            });
+
+            const pointSizeLabel = new Label({
+                class: 'director-row-label',
+                text: 'Point size'
+            });
+
+            const pointSizeSlider = new DirectorSliderInput({
+                class: ['director-slider', 'director-view-slider'],
+                min: 0,
+                max: 40,
+                step: 0.1,
+                precision: 1,
+                value: invokeOrDefault('camera.splatSize', 2)
+            });
+
+            pointSizeRow.append(pointSizeLabel);
+            pointSizeRow.append(pointSizeSlider);
+            section.append(pointSizeRow);
+
+            const updateModeButtons = () => {
+                const mode = invokeOrDefault<string>('camera.mode', 'centers');
+                pointsButton.dom.classList[mode === 'centers' ? 'add' : 'remove']('active');
+                ringsButton.dom.classList[mode === 'rings' ? 'add' : 'remove']('active');
+            };
+
+            pointsButton.on('click', () => {
+                events.fire('camera.setOverlay', true);
+                events.fire('camera.setMode', 'centers');
+            });
+
+            ringsButton.on('click', () => {
+                events.fire('camera.setOverlay', true);
+                events.fire('camera.setMode', 'rings');
+            });
+
+            pointSizeSlider.on('change', (value: number) => {
+                events.fire('camera.setSplatSize', value);
+                events.fire('camera.setOverlay', true);
+                events.fire('camera.setMode', 'centers');
+            });
+
+            events.on('camera.mode', updateModeButtons);
+            events.on('camera.splatSize', (value: number) => {
+                pointSizeSlider.value = value;
+            });
+
+            updateModeButtons();
+        };
+
+        createViewControls();
+
         let rows: ParamRow[] = [];
 
         const setEnabled = () => {
@@ -113,6 +259,10 @@ class DirectorPanel extends Container {
             rows.forEach((row) => {
                 row.slider.enabled = enabled;
                 row.keyButton.enabled = enabled;
+                row.trackButton.enabled = enabled;
+                row.prevButton.enabled = enabled;
+                row.nextButton.enabled = enabled;
+                row.clearButton.enabled = enabled;
             });
         };
 
@@ -121,6 +271,27 @@ class DirectorPanel extends Container {
                 const keyed = !!selected && hasKeyAtCurrentFrame(row.param.id);
                 row.keyButton.text = keyed ? '\u25C6' : '\u25C7';
                 row.keyButton.dom.style.color = keyed ? '#ff9900' : '#8a8a8a';
+            });
+        };
+
+        const refreshTrackControls = () => {
+            rows.forEach((row) => {
+                const keys = getParamKeys(row.param.id);
+                const hasSelection = !!selected;
+                const prevKey = hasSelection ? getAdjacentKey(row.param.id, -1) : null;
+                const nextKey = hasSelection ? getAdjacentKey(row.param.id, 1) : null;
+                const isActive = activeParamId === row.param.id;
+                const keyCount = keys.length;
+
+                row.prevButton.enabled = hasSelection && prevKey !== null;
+                row.nextButton.enabled = hasSelection && nextKey !== null;
+                row.clearButton.enabled = hasSelection && keyCount > 0;
+                row.trackButton.enabled = hasSelection;
+                row.trackButton.text = isActive ? 'Track*' : 'Track';
+                row.trackButton.dom.classList[isActive ? 'add' : 'remove']('active');
+                row.keyInfo.text = keyCount === 1 ? '1 key' : `${keyCount} keys`;
+                row.row.dom.classList[isActive ? 'add' : 'remove']('active-track');
+                row.animRow.dom.classList[isActive ? 'add' : 'remove']('active-track');
             });
         };
 
@@ -140,54 +311,116 @@ class DirectorPanel extends Container {
             refreshSliderValues();
             setEnabled();
             refreshKeyButtons();
+            refreshTrackControls();
             updateFrameLabel();
         };
 
+        let section: Container | null = null;
+        let currentGroup: DisplayParamGroup | null = null;
+
         rows = displayParams.map((param) => {
-            const row = new Container();
-            row.dom.style.display = 'flex';
-            row.dom.style.alignItems = 'center';
-            row.dom.style.gap = '8px';
-            row.dom.style.padding = '4px 8px';
+            if (param.group !== currentGroup) {
+                currentGroup = param.group;
+                section = createSection(groupLabels[param.group]);
+            }
+
+            const row = new Container({
+                class: 'director-row'
+            });
 
             const rowLabel = new Label({
-                text: localize(param.label)
+                class: 'director-row-label',
+                text: displayLabel(param.label)
             });
-            rowLabel.dom.style.flex = '0 0 180px';
-            rowLabel.dom.style.color = '#d0d0d0';
 
             const slider = new DirectorSliderInput({
+                class: 'director-slider',
                 min: param.min,
                 max: param.max,
                 step: param.step,
+                precision: param.precision ?? 2,
                 value: param.default
             });
-            slider.dom.style.flex = '1 1 auto';
-            slider.dom.style.margin = '0';
 
             const keyButton = new Button({
                 text: '\u25C7'
             });
-            keyButton.dom.classList.add('panel-header-button');
-            keyButton.dom.style.fontFamily = 'inherit';
-            keyButton.dom.style.fontSize = '16px';
-            keyButton.dom.style.lineHeight = '1';
-            keyButton.dom.style.padding = '2px 8px';
+            keyButton.dom.classList.add('panel-header-button', 'director-key-button');
 
             row.append(rowLabel);
             row.append(slider);
             row.append(keyButton);
-            this.append(row);
+            section.append(row);
+
+            const animRow = new Container({
+                class: 'director-anim-row'
+            });
+
+            const animSpacer = new Container();
+
+            const animControls = new Container({
+                class: 'director-anim-controls'
+            });
+
+            const trackButton = new Button({
+                text: 'Track'
+            });
+            trackButton.dom.classList.add('director-mini-button', 'director-track-button');
+
+            const prevButton = new Button({
+                text: '<'
+            });
+            prevButton.dom.classList.add('director-mini-button');
+
+            const nextButton = new Button({
+                text: '>'
+            });
+            nextButton.dom.classList.add('director-mini-button');
+
+            const clearParamButton = new Button({
+                text: 'Clr'
+            });
+            clearParamButton.dom.classList.add('director-mini-button');
+
+            const keyInfo = new Label({
+                class: 'director-key-info',
+                text: '0 keys'
+            });
+
+            animControls.append(trackButton);
+            animControls.append(prevButton);
+            animControls.append(nextButton);
+            animControls.append(clearParamButton);
+            animControls.append(keyInfo);
+
+            animRow.append(animSpacer);
+            animRow.append(animControls);
+            section.append(animRow);
 
             const state: ParamRow = {
+                animRow,
+                clearButton: clearParamButton,
                 dragging: false,
                 keyButton,
+                keyInfo,
+                nextButton,
                 param,
+                prevButton,
+                row,
                 slider,
+                trackButton,
                 updateKeyOnEnd: false
             };
 
+            const armTrack = () => {
+                if (!selected) {
+                    return;
+                }
+                events.fire('displayTrack.setActiveParam', param.id);
+            };
+
             slider.on('slide:start', () => {
+                armTrack();
                 state.dragging = true;
                 state.updateKeyOnEnd = !!selected && hasKeyAtCurrentFrame(param.id);
             });
@@ -208,6 +441,7 @@ class DirectorPanel extends Container {
                     return;
                 }
 
+                armTrack();
                 param.set(selected, value);
                 selected.scene.forceRender = true;
 
@@ -222,6 +456,7 @@ class DirectorPanel extends Container {
                     return;
                 }
 
+                armTrack();
                 if (hasKeyAtCurrentFrame(param.id)) {
                     events.fire('displayTrack.removeKey', param.id, currentFrame());
                 } else {
@@ -233,8 +468,53 @@ class DirectorPanel extends Container {
                 refreshKeyButtons();
             });
 
-            tooltips.register(slider, localize(param.label), 'top');
-            tooltips.register(keyButton, `${localize(param.label)} keyframe`, 'left');
+            trackButton.on('click', () => {
+                if (!selected) {
+                    return;
+                }
+
+                events.fire('displayTrack.setActiveParam', activeParamId === param.id ? null : param.id);
+            });
+
+            prevButton.on('click', () => {
+                if (!selected) {
+                    return;
+                }
+
+                const frame = getAdjacentKey(param.id, -1);
+                if (frame !== null) {
+                    armTrack();
+                    events.fire('timeline.setFrame', frame);
+                }
+            });
+
+            nextButton.on('click', () => {
+                if (!selected) {
+                    return;
+                }
+
+                const frame = getAdjacentKey(param.id, 1);
+                if (frame !== null) {
+                    armTrack();
+                    events.fire('timeline.setFrame', frame);
+                }
+            });
+
+            clearParamButton.on('click', () => {
+                if (!selected) {
+                    return;
+                }
+
+                armTrack();
+                events.fire('displayTrack.clear', param.id);
+            });
+
+            tooltips.register(slider, displayLabel(param.label), 'left');
+            tooltips.register(keyButton, `${displayLabel(param.label)} keyframe`, 'left');
+            tooltips.register(trackButton, `${displayLabel(param.label)} track in timeline`, 'left');
+            tooltips.register(prevButton, `${displayLabel(param.label)} previous key`, 'left');
+            tooltips.register(nextButton, `${displayLabel(param.label)} next key`, 'left');
+            tooltips.register(clearParamButton, `${displayLabel(param.label)} clear keys`, 'left');
 
             return state;
         });
@@ -244,26 +524,43 @@ class DirectorPanel extends Container {
             refreshKeyButtons();
         });
 
+        collapseButton.on('click', () => {
+            collapsed = !collapsed;
+            body.hidden = collapsed;
+            collapseButton.text = collapsed ? '>' : '<';
+            this.dom.classList[collapsed ? 'add' : 'remove']('collapsed');
+        });
+
         events.on('selection.changed', (selection) => {
             selected = selection instanceof Splat ? selection : null;
             refreshUI();
         });
 
         displayParams.forEach((param) => {
-            events.on(`splat.${param.id}`, (splat: Splat) => {
-                if (splat === selected) {
-                    refreshSliderValues();
-                }
+            const eventNames = param.events ?? [`splat.${param.id}`];
+            eventNames.forEach((eventName) => {
+                events.on(eventName, (splat: Splat) => {
+                    if (splat === selected) {
+                        refreshSliderValues();
+                    }
+                });
             });
         });
 
         events.on('timeline.frame', () => {
             updateFrameLabel();
             refreshKeyButtons();
+            refreshTrackControls();
         });
 
         events.on('displayTrack.changed', () => {
             refreshKeyButtons();
+            refreshTrackControls();
+        });
+
+        events.on('displayTrack.activeParamChanged', (paramId: DisplayParam['id'] | null) => {
+            activeParamId = paramId;
+            refreshTrackControls();
         });
 
         setEnabled();

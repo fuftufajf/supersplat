@@ -74,7 +74,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     // force render on some events
 
     [
-        'camera.mode', 'camera.overlay', 'camera.splatSize', 'view.outlineSelection',
+        'camera.mode', 'camera.overlay', 'camera.splatSize', 'camera.ringSize', 'view.outlineSelection',
         'view.centersUseGaussianColor', 'view.bands', 'camera.bound', 'camera.showPoses',
         'selection.changed', 'tool.coordSpace'
     ].forEach((eventName) => {
@@ -623,6 +623,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     // splat size
 
     let splatSize = 2;
+    let ringSize = 0.04;
 
     const setSplatSize = (value: number) => {
         if (value !== splatSize) {
@@ -637,6 +638,23 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     events.on('camera.setSplatSize', (value: number) => {
         setSplatSize(value);
+    });
+
+    // ring size
+
+    const setRingSize = (value: number) => {
+        if (value !== ringSize) {
+            ringSize = value;
+            events.fire('camera.ringSize', ringSize);
+        }
+    };
+
+    events.function('camera.ringSize', () => {
+        return ringSize;
+    });
+
+    events.on('camera.setRingSize', (value: number) => {
+        setRingSize(value);
     });
 
     // camera fly speed
@@ -737,7 +755,12 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
             lockedColor: packC(events.invoke('lockedClr')),
             shBands: events.invoke('view.bands'),
             centersSize: events.invoke('camera.splatSize'),
+            ringSize: events.invoke('camera.ringSize'),
+            cameraMode: events.invoke('camera.mode'),
+            cameraOverlay: events.invoke('camera.overlay'),
+            tonemapping: events.invoke('camera.tonemapping'),
             outlineSelection: events.invoke('view.outlineSelection'),
+            centersUseGaussianColor: events.invoke('view.centersUseGaussianColor'),
             showGrid: events.invoke('grid.visible'),
             showBound: events.invoke('camera.bound'),
             showCameraPoses: events.invoke('camera.showPoses'),
@@ -752,7 +775,12 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         events.fire('setLockedClr', new Color(docView.lockedColor));
         events.fire('view.setBands', docView.shBands);
         events.fire('camera.setSplatSize', docView.centersSize);
+        events.fire('camera.setRingSize', docView.ringSize ?? 0.04);
+        events.fire('camera.setMode', docView.cameraMode ?? 'centers');
+        events.fire('camera.setOverlay', docView.cameraOverlay ?? false);
+        events.fire('camera.setTonemapping', docView.tonemapping ?? 'linear');
         events.fire('view.setOutlineSelection', docView.outlineSelection);
+        events.fire('view.setCentersUseGaussianColor', docView.centersUseGaussianColor ?? false);
         events.fire('grid.setVisible', docView.showGrid);
         events.fire('camera.setBound', docView.showBound);
         events.fire('camera.setShowPoses', docView.showCameraPoses ?? false);

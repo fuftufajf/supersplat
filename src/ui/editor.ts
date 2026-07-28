@@ -124,6 +124,7 @@ class EditorUI {
         const scenePanel = new ScenePanel(events, tooltips);
         const viewPanel = new ViewPanel(events, tooltips);
         const colorPanel = new ColorPanel(events, tooltips);
+        const directorPanel = new DirectorPanel(events, tooltips);
         const bottomToolbar = new BottomToolbar(events, tooltips);
         const rightToolbar = new RightToolbar(events, tooltips);
         const modeToggle = new ModeToggle(events, tooltips);
@@ -136,6 +137,7 @@ class EditorUI {
         canvasContainer.append(scenePanel);
         canvasContainer.append(viewPanel);
         canvasContainer.append(colorPanel);
+        canvasContainer.append(directorPanel);
         canvasContainer.append(bottomToolbar);
         canvasContainer.append(rightToolbar);
         canvasContainer.append(modeToggle);
@@ -154,7 +156,6 @@ class EditorUI {
         });
 
         const timelinePanel = new TimelinePanel(events, tooltips);
-        const directorPanel = new DirectorPanel(events, tooltips);
         const dataPanel = new DataPanel(events);
         const statusBar = new StatusBar(events, tooltips);
 
@@ -166,7 +167,6 @@ class EditorUI {
         });
         timelineWorkspace.dom.style.gap = '0';
 
-        timelineWorkspace.append(directorPanel);
         timelineWorkspace.append(timelinePanel);
 
         mainContainer.append(canvasContainer);
@@ -176,6 +176,7 @@ class EditorUI {
 
         // Wire up status bar panel toggles
         events.on('statusBar.panelChanged', (panel: string | null) => {
+            directorPanel.hidden = panel !== 'timeline';
             timelineWorkspace.hidden = panel !== 'timeline';
             dataPanel.hidden = panel !== 'splatData';
         });

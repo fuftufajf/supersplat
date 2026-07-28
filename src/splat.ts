@@ -67,8 +67,13 @@ class Splat extends Element {
     _blackPoint = 0;
     _whitePoint = 1;
     _transparency = 1;
+    _gaussianScale = 1;
     _pulse = 0;
+    _pulseDepth = 0.7;
+    _pulseFrequency = 1;
+    _pulsePhase = 0;
     _revealProgress = 1;
+    _revealSoftness = 0;
 
     measurePoints: Vec3[] = [];
     measureSelection = -1;
@@ -323,7 +328,9 @@ class Splat extends Element {
         serializer.pack(this.changedCounter);
         serializer.pack(this.visible);
         serializer.pack(this.tintClr.r, this.tintClr.g, this.tintClr.b);
-        serializer.pack(this.temperature, this.saturation, this.brightness, this.blackPoint, this.whitePoint, this.transparency, this.pulse, this.revealProgress, this.calcPulseFactor(frame, fps));
+        serializer.pack(this.temperature, this.saturation, this.brightness, this.blackPoint, this.whitePoint, this.transparency);
+        serializer.pack(this.gaussianScale, this.pulse, this.pulseDepth, this.pulseFrequency, this.pulsePhase);
+        serializer.pack(this.revealProgress, this.revealSoftness, this.calcPulseFactor(frame, fps));
     }
 
     onPreRender() {
@@ -338,7 +345,7 @@ class Splat extends Element {
         // configure rings rendering
         const material = this.entity.gsplat.instance.material;
         material.setParameter('outlineMode', events.invoke('view.outlineSelection') ? 1 : 0);
-        material.setParameter('ringSize', (selected && cameraOverlay && cameraMode === 'rings') ? 0.04 : 0);
+        material.setParameter('ringSize', (selected && cameraOverlay && cameraMode === 'rings') ? events.invoke('camera.ringSize') : 0);
 
         // configure colors
         const selectedClr = events.invoke('selectedClr');
@@ -357,7 +364,7 @@ class Splat extends Element {
 
         // combine black pointer, white point and brightness
         const offset = -this.blackPoint + this.brightness;
-        const scale = 1 / (this.whitePoint - this.blackPoint);
+        const scale = 1 / Math.max(0.001, this.whitePoint - this.blackPoint);
         const revealMin = this.localBound.center.y - this.localBound.halfExtents.y;
         const revealMax = this.localBound.center.y + this.localBound.halfExtents.y;
 
@@ -370,8 +377,10 @@ class Splat extends Element {
         ]);
 
         material.setParameter('saturation', this.saturation);
+        material.setParameter('splatScale', this.gaussianScale);
         material.setParameter('pulseFactor', pulseFactor);
         material.setParameter('revealProgress', this.revealProgress);
+        material.setParameter('revealSoftness', this.revealSoftness);
         material.setParameter('revealBounds', [
             Number.isFinite(revealMin) ? revealMin : 0,
             Number.isFinite(revealMax) ? revealMax : 1
@@ -450,10 +459,8 @@ class Splat extends Element {
     }
 
     private calcPulseFactor(frame: number, fps: number) {
-        const PULSE_HZ = 1.0;
-        const PULSE_DEPTH = 0.7;
-        const osc01 = 0.5 + 0.5 * Math.sin(2 * Math.PI * PULSE_HZ * (frame / fps));
-        return 1 - this.pulse * PULSE_DEPTH * osc01;
+        const osc01 = 0.5 + 0.5 * Math.sin(2 * Math.PI * (this.pulseFrequency * (frame / fps) + this.pulsePhase));
+        return Math.max(0, 1 - this.pulse * this.pulseDepth * osc01);
     }
 
     set visible(value: boolean) {
@@ -544,6 +551,17 @@ class Splat extends Element {
         return this._transparency;
     }
 
+    set gaussianScale(value: number) {
+        if (value !== this._gaussianScale) {
+            this._gaussianScale = value;
+            this.scene.events.fire('splat.gaussianScale', this);
+        }
+    }
+
+    get gaussianScale() {
+        return this._gaussianScale;
+    }
+
     set pulse(value: number) {
         if (value !== this._pulse) {
             this._pulse = value;
@@ -555,6 +573,39 @@ class Splat extends Element {
         return this._pulse;
     }
 
+    set pulseDepth(value: number) {
+        if (value !== this._pulseDepth) {
+            this._pulseDepth = value;
+            this.scene.events.fire('splat.pulseDepth', this);
+        }
+    }
+
+    get pulseDepth() {
+        return this._pulseDepth;
+    }
+
+    set pulseFrequency(value: number) {
+        if (value !== this._pulseFrequency) {
+            this._pulseFrequency = value;
+            this.scene.events.fire('splat.pulseFrequency', this);
+        }
+    }
+
+    get pulseFrequency() {
+        return this._pulseFrequency;
+    }
+
+    set pulsePhase(value: number) {
+        if (value !== this._pulsePhase) {
+            this._pulsePhase = value;
+            this.scene.events.fire('splat.pulsePhase', this);
+        }
+    }
+
+    get pulsePhase() {
+        return this._pulsePhase;
+    }
+
     set revealProgress(value: number) {
         if (value !== this._revealProgress) {
             this._revealProgress = value;
@@ -564,6 +615,17 @@ class Splat extends Element {
 
     get revealProgress() {
         return this._revealProgress;
+    }
+
+    set revealSoftness(value: number) {
+        if (value !== this._revealSoftness) {
+            this._revealSoftness = value;
+            this.scene.events.fire('splat.revealSoftness', this);
+        }
+    }
+
+    get revealSoftness() {
+        return this._revealSoftness;
     }
 
     // get pivot position/rotation/scale (caller should have awaited operation that changed data)
@@ -599,13 +661,18 @@ class Splat extends Element {
             blackPoint: this.blackPoint,
             whitePoint: this.whitePoint,
             transparency: this.transparency,
+            gaussianScale: this.gaussianScale,
             pulse: this.pulse,
-            revealProgress: this.revealProgress
+            pulseDepth: this.pulseDepth,
+            pulseFrequency: this.pulseFrequency,
+            pulsePhase: this.pulsePhase,
+            revealProgress: this.revealProgress,
+            revealSoftness: this.revealSoftness
         };
     }
 
     docDeserialize(doc: any) {
-        const { name, position, rotation, scale, visible, tintClr, temperature, saturation, brightness, blackPoint, whitePoint, transparency, pulse, revealProgress } = doc;
+        const { name, position, rotation, scale, visible, tintClr, temperature, saturation, brightness, blackPoint, whitePoint, transparency, gaussianScale, pulse, pulseDepth, pulseFrequency, pulsePhase, revealProgress, revealSoftness } = doc;
 
         this.name = name;
         this.move(new Vec3(position), new Quat(rotation), new Vec3(scale));
@@ -613,12 +680,17 @@ class Splat extends Element {
         this.tintClr = new Color(tintClr[0], tintClr[1], tintClr[2], tintClr[3]);
         this.temperature = temperature ?? 0;
         this.saturation = saturation ?? 1;
-        this.brightness = brightness;
-        this.blackPoint = blackPoint;
-        this.whitePoint = whitePoint;
-        this.transparency = transparency;
+        this.brightness = brightness ?? 0;
+        this.blackPoint = blackPoint ?? 0;
+        this.whitePoint = whitePoint ?? 1;
+        this.transparency = transparency ?? 1;
+        this.gaussianScale = gaussianScale ?? 1;
         this.pulse = pulse ?? 0;
+        this.pulseDepth = pulseDepth ?? 0.7;
+        this.pulseFrequency = pulseFrequency ?? 1;
+        this.pulsePhase = pulsePhase ?? 0;
         this.revealProgress = revealProgress ?? 1;
+        this.revealSoftness = revealSoftness ?? 0;
     }
 }
 
