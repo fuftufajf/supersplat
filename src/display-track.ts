@@ -422,7 +422,7 @@ class DisplayTrackManager {
         });
 
         this.fireChanged();
-        this.applyFrame(this.events.invoke('timeline.frame') ?? 0);
+        this.applyFrame(this.events.invoke('timeline.frame') ?? 0, true);
     }
 
     restoreParam(paramId: DisplayParamId, snapshot: DisplayKeyframe[] = []) {
@@ -433,7 +433,7 @@ class DisplayTrackManager {
 
         this.tracks.get(param.id).restore(snapshot);
         this.fireChanged(param.id);
-        this.applyFrame(this.events.invoke('timeline.frame') ?? 0);
+        this.applyFrame(this.events.invoke('timeline.frame') ?? 0, true);
 
         if (this.activeParamId === param.id) {
             this.events.fire('track.keysLoaded');
@@ -504,7 +504,7 @@ class DisplayTrackManager {
         return Math.max(0, Math.min(maxFrame, Math.round(frame)));
     }
 
-    private applyFrame(frame: number) {
+    private applyFrame(frame: number, restore = false) {
         const splat = this.getTargetSplat();
         if (!splat || !Number.isFinite(frame)) {
             return;
@@ -515,7 +515,11 @@ class DisplayTrackManager {
         displayParams.forEach((param) => {
             const value = this.tracks.get(param.id).valueAt(frame);
             if (value !== undefined && param.get(splat) !== value) {
-                param.set(splat, value);
+                if (restore && param.restore) {
+                    param.restore(splat, value);
+                } else {
+                    param.set(splat, value);
+                }
                 changed = true;
             }
         });

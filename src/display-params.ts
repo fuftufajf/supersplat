@@ -79,6 +79,83 @@ interface DisplayParam {
     get(splat: Splat): number;
     /** write a director-space value to the splat (drives onPreRender via existing public fields) */
     set(splat: Splat, value: number): void;
+    /** restore a previously valid snapshot without re-normalizing coupled values */
+    restore?(splat: Splat, value: number): void;
+}
+
+class SetDisplayParamOp {
+    name = 'setDisplayParam';
+    splat: Splat;
+    param: DisplayParam;
+    oldValue: number;
+    newValue: number;
+
+    constructor(options: { splat: Splat, param: DisplayParam, oldValue: number, newValue: number }) {
+        this.splat = options.splat;
+        this.param = options.param;
+        this.oldValue = options.oldValue;
+        this.newValue = options.newValue;
+    }
+
+    private apply(value: number, restore = false) {
+        if (restore && this.param.restore) {
+            this.param.restore(this.splat, value);
+        } else {
+            this.param.set(this.splat, value);
+        }
+        this.splat.scene.forceRender = true;
+    }
+
+    do() {
+        this.apply(this.newValue);
+    }
+
+    undo() {
+        this.apply(this.oldValue, true);
+    }
+}
+
+const applyDisplayParamValue = (splat: Splat, param: DisplayParam, value: number) => {
+    const oldValue = param.get(splat);
+    if (Object.is(oldValue, value)) {
+        return null;
+    }
+
+    const clamped = Math.max(param.min, Math.min(param.max, value));
+    param.set(splat, clamped);
+    const newValue = param.get(splat);
+    if (Object.is(oldValue, newValue)) {
+        return null;
+    }
+
+    splat.scene.forceRender = true;
+    return new SetDisplayParamOp({ splat, param, oldValue, newValue });
+};
+
+class SetSplatVisibilityOp {
+    name = 'setSplatVisibility';
+    splat: Splat;
+    oldValue: boolean;
+    newValue: boolean;
+
+    constructor(splat: Splat, oldValue: boolean, newValue: boolean) {
+        this.splat = splat;
+        this.oldValue = oldValue;
+        this.newValue = newValue;
+    }
+
+    private apply(value: boolean) {
+        this.splat.visible = value;
+        this.splat.scene.forceRender = true;
+    }
+
+    do() {
+        this.apply(this.newValue);
+    }
+
+    undo() {
+        this.apply(this.oldValue);
+    }
 }
 
 const setTintChannel = (splat: Splat, channel: 'r' | 'g' | 'b', value: number) => {
@@ -344,6 +421,9 @@ const displayParams: DisplayParam[] = [
         get: splat => splat.blackPoint,
         set: (splat, value) => {
             setBlackPoint(splat, value);
+        },
+        restore: (splat, value) => {
+            splat.blackPoint = value;
         }
     },
     {
@@ -358,6 +438,9 @@ const displayParams: DisplayParam[] = [
         get: splat => splat.whitePoint,
         set: (splat, value) => {
             setWhitePoint(splat, value);
+        },
+        restore: (splat, value) => {
+            splat.whitePoint = value;
         }
     },
     {
@@ -425,4 +508,28 @@ const getDisplayParam = (id: DisplayParamId): DisplayParam | undefined => {
     return displayParams.find(p => p.id === id);
 };
 
-export { DisplayParam, DisplayParamGroup, DisplayParamId, displayParams, getDisplayParam };
+const displayParamValuesFromState = (display: any): Array<[DisplayParamId, unknown]> => {
+    if (display?.values && typeof display.values === 'object') {
+        return Object.entries(display.values) as Array<[DisplayParamId, unknown]>;
+    }
+
+    if (Array.isArray(display?.params)) {
+        return display.params
+        .filter((item: any) => item && item.disabled !== true && typeof item.id === 'string' && Object.hasOwn(item, 'value'))
+        .map((item: any) => [item.id as DisplayParamId, item.value]);
+    }
+
+    return [];
+};
+
+export {
+    DisplayParam,
+    DisplayParamGroup,
+    DisplayParamId,
+    SetDisplayParamOp,
+    SetSplatVisibilityOp,
+    applyDisplayParamValue,
+    displayParamValuesFromState,
+    displayParams,
+    getDisplayParam
+};

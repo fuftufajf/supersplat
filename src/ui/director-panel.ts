@@ -1,6 +1,6 @@
 import { Button, Container, Label, SliderInput } from '@playcanvas/pcui';
 
-import { displayParams, type DisplayParam, type DisplayParamGroup } from '../display-params';
+import { SetDisplayParamOp, applyDisplayParamValue, displayParams, type DisplayParam, type DisplayParamGroup } from '../display-params';
 import { Events } from '../events';
 import { Splat } from '../splat';
 import { localize } from './localization';
@@ -8,8 +8,8 @@ import { Tooltips } from './tooltips';
 
 class DirectorSliderInput extends SliderInput {
     _onSlideStart(pageX: number) {
-        super._onSlideStart(pageX);
         this.emit('slide:start');
+        super._onSlideStart(pageX);
     }
 
     _onSlideEnd(pageX: number) {
@@ -21,6 +21,8 @@ class DirectorSliderInput extends SliderInput {
 type ParamRow = {
     animRow: Container;
     clearButton: Button;
+    dragSplat: Splat | null;
+    dragStartValue: number | null;
     dragging: boolean;
     keyButton: Button;
     keyInfo: Label;
@@ -400,6 +402,8 @@ class DirectorPanel extends Container {
             const state: ParamRow = {
                 animRow,
                 clearButton: clearParamButton,
+                dragSplat: null,
+                dragStartValue: null,
                 dragging: false,
                 keyButton,
                 keyInfo,
@@ -421,14 +425,40 @@ class DirectorPanel extends Container {
 
             slider.on('slide:start', () => {
                 armTrack();
+                state.dragSplat = selected;
+                state.dragStartValue = state.dragSplat ? param.get(state.dragSplat) : null;
                 state.dragging = true;
                 state.updateKeyOnEnd = !!selected && hasKeyAtCurrentFrame(param.id);
             });
 
             slider.on('slide:end', () => {
                 state.dragging = false;
+                const selectionMatchesDrag = selected === state.dragSplat;
 
-                if (selected && state.updateKeyOnEnd) {
+                if (state.updateKeyOnEnd && !selectionMatchesDrag && state.dragSplat && state.dragStartValue !== null) {
+                    if (param.restore) {
+                        param.restore(state.dragSplat, state.dragStartValue);
+                    } else {
+                        param.set(state.dragSplat, state.dragStartValue);
+                    }
+                    state.dragSplat.scene.forceRender = true;
+                }
+
+                if (!state.updateKeyOnEnd && state.dragSplat && state.dragStartValue !== null) {
+                    const newValue = param.get(state.dragSplat);
+                    if (state.dragStartValue !== newValue) {
+                        events.fire('edit.add', new SetDisplayParamOp({
+                            splat: state.dragSplat,
+                            param,
+                            oldValue: state.dragStartValue,
+                            newValue
+                        }), true);
+                    }
+                }
+                state.dragSplat = null;
+                state.dragStartValue = null;
+
+                if (selected && selectionMatchesDrag && state.updateKeyOnEnd) {
                     events.fire('displayTrack.addKey', param.id, currentFrame());
                 }
 
@@ -437,17 +467,26 @@ class DirectorPanel extends Container {
             });
 
             slider.on('change', (value: number) => {
-                if (suppress || !selected) {
+                const target = state.dragging ? state.dragSplat : selected;
+                if (suppress || !target) {
                     return;
                 }
 
-                armTrack();
-                param.set(selected, value);
-                selected.scene.forceRender = true;
-
-                if (!state.dragging && hasKeyAtCurrentFrame(param.id)) {
-                    events.fire('displayTrack.addKey', param.id, currentFrame());
-                    refreshKeyButtons();
+                if (!state.dragging) {
+                    armTrack();
+                }
+                const updateCurrentKey = !state.dragging && hasKeyAtCurrentFrame(param.id);
+                if (state.dragging) {
+                    param.set(target, value);
+                    target.scene.forceRender = true;
+                } else {
+                    const op = applyDisplayParamValue(target, param, value);
+                    if (updateCurrentKey) {
+                        events.fire('displayTrack.addKey', param.id, currentFrame());
+                        refreshKeyButtons();
+                    } else if (op) {
+                        events.fire('edit.add', op, true);
+                    }
                 }
             });
 

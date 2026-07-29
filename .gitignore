@@ -1,5 +1,6 @@
 node_modules
 dist
+.contract-test
 .DS_Store
 .npmrc
 .vscode

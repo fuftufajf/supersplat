@@ -1,6 +1,15 @@
 import { Color, Vec3 } from 'playcanvas';
 
-import { displayParams, getDisplayParam, type DisplayParam, type DisplayParamGroup, type DisplayParamId } from './display-params';
+import {
+    SetSplatVisibilityOp,
+    applyDisplayParamValue,
+    displayParamValuesFromState,
+    displayParams,
+    getDisplayParam,
+    type DisplayParam,
+    type DisplayParamGroup,
+    type DisplayParamId
+} from './display-params';
 import { AnimTrackEditOp } from './edit-ops';
 import { Events } from './events';
 import { Splat } from './splat';
@@ -318,9 +327,10 @@ const registerIframeApi = (events: Events, canvas: HTMLCanvasElement) => {
             };
         }
 
-        const clamped = Math.max(param.min, Math.min(param.max, numericValue));
-        param.set(splat, clamped);
-        splat.scene.forceRender = true;
+        const op = applyDisplayParamValue(splat, param, numericValue);
+        if (op) {
+            events.fire('edit.add', op, true);
+        }
         events.fire('displayTrack.changed', param.id);
 
         return {
@@ -682,12 +692,10 @@ const registerIframeApi = (events: Events, canvas: HTMLCanvasElement) => {
                 events.fire('displayTrack.setActiveParam', state.display.activeParamId);
             }
 
-            if (state.display.values && typeof state.display.values === 'object') {
-                for (const [paramId, value] of Object.entries(state.display.values)) {
-                    const result = setParamValue(paramId as DisplayParamId, Number(value));
-                    if (!result.ok) {
-                        return result;
-                    }
+            for (const [paramId, value] of displayParamValuesFromState(state.display)) {
+                const result = setParamValue(paramId, Number(value));
+                if (!result.ok) {
+                    return result;
                 }
             }
         }
@@ -855,8 +863,11 @@ const registerIframeApi = (events: Events, canvas: HTMLCanvasElement) => {
                 };
             }
 
-            splat.visible = !splat.visible;
+            const oldValue = splat.visible;
+            const newValue = !oldValue;
+            splat.visible = newValue;
             splat.scene.forceRender = true;
+            events.fire('edit.add', new SetSplatVisibilityOp(splat, oldValue, newValue), true);
 
             return {
                 ok: true,
