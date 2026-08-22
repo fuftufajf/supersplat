@@ -58,6 +58,7 @@ const application = {
                 { src: 'src/director-board.html' },
                 { src: 'src/director-board.js' },
                 { src: 'src/manifest.json' },
+                { src: 'src/splat-director-identity.json' }, // tożsamość dla Frame Studio (tryb Splat Director)
                 { src: 'static/images', dest: 'static' },
                 { src: 'static/icons', dest: 'static' },
                 { src: 'static/lib', dest: 'static' },

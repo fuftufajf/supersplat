@@ -184,8 +184,31 @@ function resolveIframeUrl() {
     params.set('nosw', '1');
     params.delete('stage');
     params.delete('stageFull');
+    params.delete('wroc'); // adres powrotu (mostek Frame Studio) nie jest sprawą edytora
     const query = params.toString();
     return './' + (query ? '?' + query : '?embedded=1&editor=1&nosw=1');
+}
+
+// Mostek z Frame Studio / Map Flight: ?wroc=<url> = dokąd wrócić po edycji splata.
+// Tylko adresy loopback — to jest lokalny warsztat, nie nawigacja w świat.
+function initWroc() {
+    const wroc = new URLSearchParams(window.location.search).get('wroc');
+    const btn = document.getElementById('btn-wroc');
+    if (!wroc || !btn) return;
+    try {
+        const u = new URL(wroc);
+        const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname);
+        if (!/^https?:$/.test(u.protocol) || !loopback) return;
+        btn.hidden = false;
+        btn.addEventListener('click', () => { window.location.href = u.href; });
+    } catch (e) {
+        /* zły adres = brak przycisku */
+    }
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initWroc);
+} else {
+    initWroc();
 }
 
 function withCacheBust(url) {
