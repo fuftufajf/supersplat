@@ -287,8 +287,11 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                 if (f.contents) fileSystem.addFile(f.filename, f.contents);
             });
 
-            // For URL-only single file, use full URL as filename
-            const filename = (files.length === 1 && !mainFile.contents && mainFile.url) ?
+            // For URL-only single file, use full URL as filename — chyba że wołający podał
+            // filename (mostek Map Flight podaje ?filename=). Bez tego zapis proponuje nazwę
+            // zrobioną z całego adresu (http___127.0.0.1_8977_biblioteka_...ply) i plik wraca
+            // do biblioteki nie do rozpoznania.
+            const filename = (files.length === 1 && !mainFile.contents && mainFile.url && !mainFile.filename) ?
                 mainFile.url :
                 mainFile.filename;
 
