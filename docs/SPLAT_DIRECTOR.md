@@ -1,10 +1,13 @@
 # Splat Director on SuperSplat 3
 
 Splat Director animates how splat layers look over the timeline and exposes a
-bridge for the external Director Board. Branch `splat-director-v3`, based on
-upstream `v3.3.0` (WebGPU renderer). The 2.x implementation lives on branch
-`splat-director` and is not merged here: v3 replaced the renderer, so the
-director was rebuilt, not rebased.
+bridge for the external Director Board. It is the fork's main line: `main`
+fast-forwards to branch `splat-director-v3` (worktree
+`D:\GITHUB\fuftufajf\supersplat-v3`, which the Task Board launcher serves),
+based on upstream `v3.3.0` (WebGPU renderer). The 2.x implementation is
+archived at tag `archive/splat-director-2.x` (branch `splat-director`) and is
+not merged here: v3 replaced the renderer, so the director was rebuilt, not
+rebased.
 
 ## What is native in v3 (not re-implemented)
 
