@@ -7,15 +7,13 @@ import { Events } from './events';
  * key operations. Resolves which track the user is interacting
  * with and ensures all mutations are undoable.
  *
- * For now, the active track is always the camera track.
- * When selection-based switching is added, getActiveTrack()
- * will inspect the current selection.
+ * An active Splat Director param takes over the timeline; without one, key
+ * operations address the camera animation track.
  */
 const registerTrackManagerEvents = (events: Events) => {
-    // Get the animation track of the currently active element.
-    // For now, always returns the camera animation track.
     const getActiveTrack = (): AnimTrack | null => {
-        return events.invoke('camera.animTrack') ?? null;
+        // the director registers once the scene exists; the timeline panel asks earlier
+        return events.functions.get('displayTrack.activeTrack')?.() ?? events.invoke('camera.animTrack') ?? null;
     };
 
     // Helper: execute an edit on the active track wrapped in undo.

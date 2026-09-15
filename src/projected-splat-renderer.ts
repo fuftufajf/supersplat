@@ -42,11 +42,14 @@ import {
     Texture,
     UniformBufferFormat,
     UniformFormat,
-    Vec2
+    Quat,
+    Vec2,
+    Vec3
 } from 'playcanvas';
 
 import { createGradeTerms, gradeRows, gradeTerms, type GradeParams } from './color-grade';
 import { maskByteSize } from './data-processor/histogram-config';
+import { displayGradeParams, hasDisplayGrade } from './display-params';
 import type { Scene } from './scene';
 import { footprintIntersect } from './shaders/footprint-intersect-shader';
 import { projectedSplatDepthReduce } from './shaders/projected-splat-depth-reduce-shader';
@@ -84,6 +87,9 @@ const MOTION_STEP_MS = 50;
 const OCCLUSION_BLOCK = 8;
 
 const roundUp = (value: number, alignment: number) => Math.ceil(value / alignment) * alignment;
+
+const revealAxis = new Vec3();
+const revealRotation = new Quat();
 
 type ProjectorVariant = {
     shader: Shader;
@@ -157,6 +163,9 @@ class ProjectedSplatRenderer {
     // the colour panel's pending grade, packed as three vec4 rows; reused per frame
     private readonly previewTerms = createGradeTerms();
     private readonly previewRows = new Float32Array(12);
+    // a layer's Splat Director live grade, packed the same way; reused per placement
+    private readonly directorTerms = createGradeTerms();
+    private readonly directorRows = new Float32Array(12);
     private readonly shaderProjection = new Mat4();
     private readonly viewProjection = new Mat4();
     private readonly dispatchSize = new Vec2();
@@ -487,7 +496,18 @@ class ProjectedSplatRenderer {
             new UniformFormat('occlusionBlocksX', UNIFORMTYPE_UINT),
             new UniformFormat('occlusionBlocksY', UNIFORMTYPE_UINT),
             new UniformFormat('occlusionBlock', UNIFORMTYPE_FLOAT),
-            new UniformFormat('occlusionEnabled', UNIFORMTYPE_UINT)
+            new UniformFormat('occlusionEnabled', UNIFORMTYPE_UINT),
+            new UniformFormat('directorScale', UNIFORMTYPE_FLOAT),
+            new UniformFormat('directorAlpha', UNIFORMTYPE_FLOAT),
+            new UniformFormat('pointBlend', UNIFORMTYPE_FLOAT),
+            new UniformFormat('pointSize', UNIFORMTYPE_FLOAT),
+            new UniformFormat('revealParams', UNIFORMTYPE_VEC4),
+            new UniformFormat('revealAxis', UNIFORMTYPE_VEC4),
+            new UniformFormat('directorGrade', UNIFORMTYPE_UINT),
+            new UniformFormat('directorGradeAlpha', UNIFORMTYPE_FLOAT),
+            new UniformFormat('directorRow0', UNIFORMTYPE_VEC4),
+            new UniformFormat('directorRow1', UNIFORMTYPE_VEC4),
+            new UniformFormat('directorRow2', UNIFORMTYPE_VEC4)
         ]);
         const bindGroupFormat = new BindGroupFormat(this.device, [
             new BindStorageBufferFormat('sortKeys', SHADERSTAGE_COMPUTE),
@@ -806,6 +826,57 @@ class ProjectedSplatRenderer {
         this.layoutDirty = false;
     }
 
+    // a layer's Splat Director display values (display-params) as projector uniforms
+    private setDirectorParameters(compute: Compute, splat: Splat, minPixelSize: number, forPick: boolean, frameTime: number, frameRate: number) {
+        const d = splat.display;
+
+        // picks and selection see the true footprints; the look params are visual only
+        const detailCull = d.detailCull ?? 0;
+        if (!forPick && detailCull > minPixelSize) {
+            compute.setParameter('minPixelSize', detailCull);
+        }
+        compute.setParameter('directorScale', forPick ? 1 : d.gaussianScale ?? 1);
+        compute.setParameter('pointBlend', forPick ? 0 : d.pointCloud ?? 0);
+        compute.setParameter('pointSize', (d.pointSize ?? 2) * window.devicePixelRatio);
+
+        // pulse: 1 - amount * depth * (0.5 + 0.5 sin(2π(freq * t + phase))), t in seconds
+        const pulse = d.pulse ?? 0;
+        const wave = 0.5 + 0.5 * Math.sin(2 * Math.PI * ((d.pulseFrequency ?? 1) * frameTime / frameRate + (d.pulsePhase ?? 0)));
+        compute.setParameter('directorAlpha', Math.max(0, 1 - pulse * (d.pulseDepth ?? 0.7) * wave));
+
+        // reveal, pulse and the grade's transparency apply to picks too, so what
+        // the director hid can't be selected; the footprint params above can't
+        // "up" for the sweep, in layer space: the orient tool's plane normal when
+        // one was picked, otherwise world up as the layer is currently rotated,
+        // so a reveal grows from the ground whatever the capture's axes were
+        if (splat.hasLocalFrame) {
+            splat.localFrame.transformVector(Vec3.UP, revealAxis);
+        } else {
+            revealRotation.copy(splat.entity.getRotation()).invert().transformVector(Vec3.UP, revealAxis);
+        }
+        // extent of the layer bound along that axis: project the box half extents
+        const { center, halfExtents } = splat.localBound;
+        const mid = center.dot(revealAxis);
+        const half = Math.abs(halfExtents.x * revealAxis.x) + Math.abs(halfExtents.y * revealAxis.y) + Math.abs(halfExtents.z * revealAxis.z);
+        compute.setParameter('revealParams', [
+            Number.isFinite(mid - half) ? mid - half : 0,
+            Number.isFinite(mid + half) ? mid + half : 1,
+            d.revealProgress ?? 1,
+            d.revealSoftness ?? 0
+        ]);
+        compute.setParameter('revealAxis', [revealAxis.x, revealAxis.y, revealAxis.z, 0]);
+
+        const grade = hasDisplayGrade(splat);
+        compute.setParameter('directorGrade', grade ? 1 : 0);
+        if (grade) {
+            gradeRows(gradeTerms(displayGradeParams(splat) as GradeParams, this.directorTerms), this.directorRows);
+        }
+        compute.setParameter('directorGradeAlpha', grade ? this.directorTerms.transparency : 1);
+        compute.setParameter('directorRow0', this.directorRows.subarray(0, 4));
+        compute.setParameter('directorRow1', this.directorRows.subarray(4, 8));
+        compute.setParameter('directorRow2', this.directorRows.subarray(8, 12));
+    }
+
     render(forPick = false) {
         if (this.layoutDirty) {
             this.rebuildLayout();
@@ -841,6 +912,9 @@ class ProjectedSplatRenderer {
         const viewBands = events.invoke('view.bands') as number;
         // Size culling is visual only: selection and depth queries need every footprint.
         const minPixelSize = forPick ? 0 : (events.invoke('view.minPixelSize') as number) ?? 0;
+        // the Splat Director playhead, for time-driven effects (pulse)
+        const frameTime = (events.invoke('displayTrack.frameTime') as number) ?? 0;
+        const frameRate = (events.invoke('timeline.frameRate') as number) ?? 30;
 
         // the centres overlay draws the selected layer's centres from this
         // frame's projection: all of them in the edit view with centres on,
@@ -986,6 +1060,7 @@ class ProjectedSplatRenderer {
             compute.setParameter('occlusionBlocksY', this.occlusionBlocks.y);
             compute.setParameter('occlusionBlock', OCCLUSION_BLOCK);
             compute.setParameter('occlusionEnabled', occlusion ? 1 : 0);
+            this.setDirectorParameters(compute, splat, minPixelSize, forPick, frameTime, frameRate);
 
             const workgroups = Math.ceil(placement.entryCapacity / WORKGROUP_SIZE);
             Compute.calcDispatchSize(workgroups, this.dispatchSize);

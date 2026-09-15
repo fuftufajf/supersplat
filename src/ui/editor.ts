@@ -9,6 +9,7 @@ import type { BlobReadSource } from '../io';
 import { AboutPopup } from './about-popup';
 import { BottomToolbar } from './bottom-toolbar';
 import { CameraInfoOverlay } from './camera-info-overlay';
+import { DirectorPanel } from './director-panel';
 import { ExportPopup } from './export-popup';
 import { ImageSettingsDialog } from './image-settings-dialog';
 import { i18n } from './localization';
@@ -116,6 +117,7 @@ class EditorUI {
         const cameraInfoOverlay = new CameraInfoOverlay(events, tooltips);
         const perfOverlay = new PerfOverlay(events);
         const overdrawLegend = new OverdrawLegend(events);
+        const directorPanel = new DirectorPanel(events, tooltips);
 
         canvasContainer.dom.appendChild(canvas);
         canvasContainer.append(annotationContainer);
@@ -134,6 +136,7 @@ class EditorUI {
         canvasContainer.append(settingsPanel);
         canvasContainer.append(appearancePanel);
         canvasContainer.append(overlaysPanel);
+        canvasContainer.append(directorPanel);
 
         // view axes container
         const viewCube = new ViewCube(events);
@@ -161,6 +164,7 @@ class EditorUI {
         // Wire up status bar panel toggles
         events.on('statusBar.panelChanged', (panel: string | null) => {
             timelinePanel.hidden = panel !== 'timeline';
+            directorPanel.hidden = panel !== 'timeline';
             dataPanel.hidden = panel !== 'splatData';
         });
 

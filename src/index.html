@@ -10,6 +10,20 @@
         <meta name="description" content="SuperSplat is an advanced browser-based editor for manipulating and optimizing 3D Gaussian Splats. It is open source and engine agnostic." />
         <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
 
+        <!-- Splat Director: the root opens the Director Board, which embeds this
+             editor with ?embedded=1. ?editor=1 opens the plain editor. -->
+        <script>
+            (() => {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('embedded') === '1' || params.get('editor') === '1') {
+                    document.documentElement.dataset.embedded = params.get('embedded') === '1' ? '1' : '0';
+                    return;
+                }
+                const board = window.location.pathname.replace(/[^/]*$/, 'director-board.html');
+                window.location.replace(board + window.location.search + window.location.hash);
+            })();
+        </script>
+
         <!-- v3 removed the service worker: unregister workers and delete caches
              left behind by earlier versions, so stale clients stop serving old
              builds. Can be removed once pre-v3 clients have cycled through. -->

@@ -54,7 +54,11 @@ const application = {
                         return contents.toString().replace('__BASE_HREF__', HREF);
                     }
                 },
+                { src: 'src/director-board.html' },
+                { src: 'src/director-board.js' },
                 { src: 'src/manifest.json' },
+                // identity Frame Studio checks before opening its Splat Director mode
+                { src: 'src/splat-director-identity.json' },
                 { src: 'static/images', dest: 'static' },
                 { src: 'static/icons', dest: 'static' },
                 { src: 'static/lib', dest: 'static' },

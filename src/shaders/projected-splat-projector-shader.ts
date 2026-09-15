@@ -144,7 +144,22 @@ struct ProjectorUniforms {
     occlusionBlocksX: u32,
     occlusionBlocksY: u32,
     occlusionBlock: f32,
-    occlusionEnabled: u32
+    occlusionEnabled: u32,
+    // Splat Director (display-params): gaussian size multiplier, alpha factor
+    // (pulse), point cloud blend and disc size in pixels, reveal sweep (min, max,
+    // progress, softness) along an up axis in layer space, and a live grade
+    // applied after the palette
+    directorScale: f32,
+    directorAlpha: f32,
+    pointBlend: f32,
+    pointSize: f32,
+    revealParams: vec4f,
+    revealAxis: vec4f,
+    directorGrade: u32,
+    directorGradeAlpha: f32,
+    directorRow0: vec4f,
+    directorRow1: vec4f,
+    directorRow2: vec4f
 }
 
 // compaction output: surviving splats are appended to a dense list, so the sort
@@ -237,7 +252,27 @@ fn main(
     let rotation = vec4f(packedRotation, b.w, sqrt(max(0.0, 1.0 - dot(vec3f(packedRotation, b.w), vec3f(packedRotation, b.w)))));
     let localCenter = bitcast<vec3f>(a.xyz);
     let paletteWord = instancePalette[instance];
-    let model = uniforms.model * paletteMatrix(paletteWord & 0xffffu);
+    let paletteTransform = paletteMatrix(paletteWord & 0xffffu);
+    let model = uniforms.model * paletteTransform;
+
+    // director reveal: gaussians above the sweep along the up axis are dropped,
+    // or faded over the softness band
+    var revealAlpha = 1.0;
+    if (uniforms.revealParams.z < 1.0) {
+        let height = dot((paletteTransform * vec4f(localCenter, 1.0)).xyz, uniforms.revealAxis.xyz);
+        let t = (height - uniforms.revealParams.x) / max(1e-5, uniforms.revealParams.y - uniforms.revealParams.x);
+        if (uniforms.revealParams.w <= 0.0) {
+            if (t > uniforms.revealParams.z) {
+                return;
+            }
+        } else {
+            revealAlpha = 1.0 - smoothstep(uniforms.revealParams.z, uniforms.revealParams.z + uniforms.revealParams.w, t);
+            if (revealAlpha <= 0.001) {
+                return;
+            }
+        }
+    }
+
     let worldCenter = model * vec4f(localCenter, 1.0);
     let viewCenter = uniforms.view * worldCenter;
     let depth = -viewCenter.z;
@@ -255,10 +290,11 @@ fn main(
 
     let modelView = uniforms.view * model;
     let linear = mat3x3f(modelView[0].xyz, modelView[1].xyz, modelView[2].xyz);
+    let scale = b.xyz * uniforms.directorScale;
     let gaussian = linear * rotationMatrix(rotation) * mat3x3f(
-        vec3f(b.x, 0.0, 0.0),
-        vec3f(0.0, b.y, 0.0),
-        vec3f(0.0, 0.0, b.z)
+        vec3f(scale.x, 0.0, 0.0),
+        vec3f(0.0, scale.y, 0.0),
+        vec3f(0.0, 0.0, scale.z)
     );
     let row0 = vec3f(gaussian[0].x, gaussian[1].x, gaussian[2].x);
     let row1 = vec3f(gaussian[0].y, gaussian[1].y, gaussian[2].y);
@@ -309,7 +345,10 @@ fn main(
     // skip splats whose projected size falls below the cull threshold. With the
     // centres overlay up they are projected anyway - their centre still draws -
     // but land in the tail list below instead of among the survivors
-    let sizeCulled = 2.0 * sqrt(2.0 * lambda1) < uniforms.minPixelSize;
+    // the point cloud blend pulls every footprint toward a fixed disc, so it is
+    // the blended size that has to clear the cull
+    let pointBlend = uniforms.pointBlend;
+    let sizeCulled = mix(2.0 * sqrt(2.0 * lambda1), uniforms.pointSize, pointBlend) < uniforms.minPixelSize;
     if (sizeCulled && uniforms.keepCulled == 0u) {
         return;
     }
@@ -329,8 +368,8 @@ fn main(
     let maxRadius = min(1024.0, min(viewport.x, viewport.y));
     let len1 = 2.0 * sqrt(2.0 * lambda1);
     let radiusScale = min(1.0, maxRadius / len1);
-    let axis1 = len1 * radiusScale * direction;
-    let len2 = 2.0 * sqrt(2.0 * lambda2) * radiusScale;
+    let len2 = mix(2.0 * sqrt(2.0 * lambda2) * radiusScale, uniforms.pointSize, pointBlend);
+    let axis1 = mix(len1 * radiusScale, uniforms.pointSize, pointBlend) * direction;
     let axis2 = len2 * vec2f(direction.y, -direction.x);
 
     let ndc = clip.xy / clip.w;
@@ -409,6 +448,8 @@ fn main(
     if (previewed) {
         gradedAlpha *= uniforms.colorAlpha;
     }
+    // director: the point cloud is opaque, then transparency, pulse and reveal fade it
+    gradedAlpha = mix(gradedAlpha, 1.0, pointBlend) * uniforms.directorGradeAlpha * uniforms.directorAlpha * revealAlpha;
     gradedAlpha = clamp(gradedAlpha, 0.0, 1.0);
     // stochastic frames also cull by contribution - the gaussian's alpha mass in
     // pixels, alpha * 2 pi * sqrt(det) of the dilated covariance, the engine's
@@ -429,6 +470,9 @@ fn main(
     var graded = applyColorGrade(color.rgb, grade.row0, grade.row1, grade.row2);
     if (previewed) {
         graded = applyColorGrade(graded, uniforms.colorRow0, uniforms.colorRow1, uniforms.colorRow2);
+    }
+    if (uniforms.directorGrade != 0u) {
+        graded = applyColorGrade(graded, uniforms.directorRow0, uniforms.directorRow1, uniforms.directorRow2);
     }
     color = vec4f(graded, gradedAlpha);
 

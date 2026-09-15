@@ -202,6 +202,10 @@ const registerDocEvents = (scene: Scene, events: Events) => {
             events.invoke('docDeserialize.timeline', document.timeline);
             events.invoke('docDeserialize.poseSets', document.poseSets, document.camera?.fov);
             events.invoke('docDeserialize.view', document.view);
+            // Splat Director: scene tracks and board metadata; layer tracks came with each splat
+            events.invoke('docDeserialize.sceneDirector', document.sceneDirector);
+            events.invoke('docDeserialize.director', document.director);
+            events.fire('displayTrack.refresh');
             scene.camera.docDeserialize(document.camera);
 
             // refresh the pivot to reflect the loaded transform
@@ -212,12 +216,14 @@ const registerDocEvents = (scene: Scene, events: Events) => {
                 currentSelection.getPivot(transform);
                 pivot.place(transform);
             }
+            return true;
         } catch (error) {
             await events.invoke('showPopup', {
                 type: 'error',
                 header: i18n.t('doc.load-failed'),
                 message: `'${error.message ?? error}'`
             });
+            return false;
         } finally {
             scene.suspendRender = false;
             scene.forceRender = true;
@@ -310,6 +316,8 @@ const registerDocEvents = (scene: Scene, events: Events) => {
                 view: events.invoke('docSerialize.view'),
                 poseSets: events.invoke('docSerialize.poseSets'),
                 timeline: events.invoke('docSerialize.timeline'),
+                sceneDirector: events.invoke('docSerialize.sceneDirector'),
+                director: events.invoke('docSerialize.director'),
                 resources: groups.map((group, i) => ({
                     filename: `resource_${i}.ply`,
                     numRows: group.rows.length
@@ -417,7 +425,9 @@ const registerDocEvents = (scene: Scene, events: Events) => {
             return false;
         }
 
-        await loadDocument(file, handle);
+        if (!await loadDocument(file, handle)) {
+            return false;
+        }
 
         events.fire('doc.setName', file.name);
 
@@ -425,6 +435,20 @@ const registerDocEvents = (scene: Scene, events: Events) => {
             documentFileHandle = handle;
             recentFiles.add({ handle, name: handle.name });
         }
+        return true;
+    });
+
+    // Splat Director board: save to a file handle it picked. writeDocument handles
+    // saving over the file the document is open from
+    events.function('doc.saveToHandle', async (handle: FileSystemFileHandle) => {
+        if (!await writeDocument(handle)) {
+            return false;
+        }
+        documentFileHandle = handle;
+        events.fire('doc.setName', handle.name);
+        recentFiles.add({ handle, name: handle.name });
+        events.fire('doc.saved');
+        return true;
     });
 
     events.function('doc.open', async () => {

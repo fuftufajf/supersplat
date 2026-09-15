@@ -1,0 +1,8 @@
+{
+ "service": "splat-director",
+ "version": 1,
+ "engine": "supersplat-3",
+ "label": "Splat Director (SuperSplat 3)",
+ "editor": "/",
+ "board": "/director-board"
+}

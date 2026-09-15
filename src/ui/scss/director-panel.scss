@@ -1,0 +1,116 @@
+@use 'colors.scss' as *;
+
+// Splat Director panel, shown with the timeline (see ui/director-panel.ts)
+#director-panel {
+    top: 102px;
+    right: 72px;
+    width: 400px;
+    max-height: calc(100% - 220px);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.38);
+
+    &.pcui-hidden {
+        display: none;
+    }
+
+    > .director-panel-header {
+        gap: 6px;
+        padding: 2px 8px;
+
+        > .director-layer-label {
+            color: $text-secondary;
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        > .director-frame-label {
+            color: $clr-hilight;
+            font-weight: bold;
+        }
+
+        > .director-header-action {
+            height: 22px;
+            min-width: 24px;
+            margin: 0;
+            padding: 0 6px;
+        }
+    }
+
+    > .director-panel-body {
+        overflow-y: auto;
+        padding: 2px 8px 8px;
+    }
+
+    .director-section-label {
+        display: block;
+        color: $text-dark;
+        cursor: pointer;
+        font-size: 10px;
+        font-weight: bold;
+        line-height: 22px;
+        text-transform: uppercase;
+    }
+
+    .director-row {
+        display: grid;
+        grid-template-columns: 82px minmax(0, 1fr) 24px 20px 20px 20px 20px 16px;
+        align-items: center;
+        gap: 3px;
+        min-height: 26px;
+
+        &.active-track > .director-row-label {
+            color: $clr-hilight;
+        }
+
+        > .pcui-button {
+            margin: 0;
+            padding: 0;
+            height: 20px;
+            min-width: 0;
+            font-size: 10px;
+            line-height: 18px;
+        }
+
+        > .director-key-button {
+            font-size: 13px;
+
+            &.keyed {
+                color: $clr-hilight;
+            }
+        }
+
+        > .director-mini-button.active {
+            color: $clr-hilight;
+            border-color: $clr-hilight;
+        }
+    }
+
+    .director-row-label {
+        color: $text-secondary;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .director-slider {
+        margin: 0;
+        min-width: 0;
+
+        > .pcui-numeric-input {
+            width: 58px;
+            margin-left: 4px;
+        }
+    }
+
+    .director-toggle {
+        margin: 0;
+    }
+
+    .director-key-info {
+        color: $text-dark;
+        font-size: 10px;
+    }
+}

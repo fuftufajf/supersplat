@@ -7,6 +7,7 @@
 @use 'scene-panel.scss';
 @use 'settings-panel.scss';
 @use 'color-panel.scss';
+@use 'director-panel.scss';
 @use 'splat-list.scss';
 @use 'transform.scss';
 @use 'bottom-toolbar.scss';
@@ -33,6 +34,16 @@
 html {
     height: 100%;
     overscroll-behavior: none;
+}
+
+// Splat Director: embedded in the Director Board the editor is only its canvas.
+// #top-container stays: it holds the popups (confirm, errors, progress)
+html[data-embedded='1'] {
+    #tooltips-container,
+    #canvas-container > :not(canvas, #annotation-container),
+    #main-container > :not(#canvas-container) {
+        display: none !important;
+    }
 }
 
 body {

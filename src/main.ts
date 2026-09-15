@@ -3,6 +3,8 @@ import { Color, createGraphicsDevice } from 'playcanvas';
 
 import { registerCameraPosesEvents } from './camera-poses';
 import { CommandQueue } from './command-queue';
+import { registerDirectorBridge } from './director-bridge';
+import { registerDisplayTrackEvents } from './display-track';
 import { registerDocEvents } from './doc';
 import { EditHistory } from './edit-history';
 import { registerEditorEvents } from './editor';
@@ -269,11 +271,13 @@ const main = async () => {
 
     // register events that need scene or other dependencies
     registerEditorEvents(events, editHistory, scene);
+    registerDisplayTrackEvents(events, scene);
     registerSelectionEvents(events, scene);
     registerSequenceEvents(events, scene);
     registerDocEvents(scene, events);
     registerRenderEvents(scene, events);
     initFileHandler(scene, events, editorUI.appContainer.dom);
+    registerDirectorBridge(events);
 
     // apply stored user preferences and start capturing changes to them.
     // registered after the boot-time initialization events above so they are

@@ -310,14 +310,18 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
             const isContainer = lowerMainFilename === 'meta.json' || lowerMainFilename === 'lod-meta.json' || lowerMainFilename.endsWith('.lcc') || lowerMainFilename.endsWith('.lcc2');
 
             // For URL-only single file, use full URL as filename
-            const filename = (files.length === 1 && !mainFile.contents && mainFile.url && !isContainer) ?
-                mainFile.url :
-                mainFile.filename;
+            const urlOnly = files.length === 1 && !mainFile.contents && mainFile.url && !isContainer;
+            const filename = urlOnly ? mainFile.url : mainFile.filename;
 
             const model = await scene.assetLoader.load(filename, fileSystem, animationFrame);
             if (!model) {
                 // user cancelled the load
                 return null;
+            }
+            // the layer keeps the caller's name (?load=…&filename=…), not the whole address
+            if (urlOnly && mainFile.filename) {
+                // backing field: the setter notifies a scene the layer isn't in yet
+                model._name = mainFile.filename;
             }
             model.resource.fileSources = fileSystem.sources;
             await scene.add(model);

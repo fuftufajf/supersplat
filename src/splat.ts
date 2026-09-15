@@ -10,6 +10,8 @@ import {
 
 import { ColorGrade, createGradeTerms, gradeTerms } from './color-grade';
 import { ColorPalette } from './color-palette';
+import type { DisplayTrackSet, DisplayValues } from './display-params';
+import { deserializeTarget, serializeTarget } from './display-track';
 import { EditorSplatResource } from './editor-splat-resource';
 import { Element, ElementType } from './element';
 import { GaussianInstances } from './gaussian-instances';
@@ -58,6 +60,12 @@ class Splat extends Element {
     colorPalette: ColorPalette;
 
     selectionAlpha = 1;
+
+    // Splat Director: live display values applied over the palette every frame,
+    // and this layer's keyframes (see display-params / display-track)
+    display: DisplayValues = {};
+    displayTracks: DisplayTrackSet = {};
+    authoredEuler?: { x: number, y: number, z: number, qx: number, qy: number, qz: number, qw: number };
 
     _name = '';
 
@@ -295,6 +303,7 @@ class Splat extends Element {
         // and this layer has not been added to one yet
         layer._name = name;
         layer._visible = this._visible;
+        deserializeTarget(layer, serializeTarget(this));
 
         // the copied instances still index *this* layer's palettes, so give the new
         // layer its own entries for the transforms and grades it actually
@@ -454,7 +463,8 @@ class Splat extends Element {
             scale: pack3(this.entity.getLocalScale()),
             localFrameOrigin: pack3(this.localFrameOrigin),
             localFrame: pack4(this.localFrame),
-            visible: this.visible
+            visible: this.visible,
+            director: serializeTarget(this)
         };
     }
 
@@ -468,6 +478,7 @@ class Splat extends Element {
         this.localFrame = doc.localFrame ? new Quat(doc.localFrame) : new Quat();
         this.visible = visible;
         this.migrateLayerGrade(doc);
+        deserializeTarget(this, doc.director);
     }
 
     // Documents up to v0 carried one colour grade for the whole layer. Colour is
